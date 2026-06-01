@@ -587,9 +587,9 @@ __nasbackup_backup() {
         __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_FAILED
 
         set -- "${__NASBACKUP_JOBS[@]}"
-        while (( $# >= 3 )); do
+        while (( $# >= 2 )); do
             __nasbackup_backup_directory_to_nas "$1" "$2" "$run_id" || return
-            shift 3
+            shift 2
         done
     } always {
         backup_exit_code="$?"
