@@ -9,14 +9,6 @@
 #   man launchctl
 #   man launchd.plist
 
-__NASBACKUP_SCRIPT_DIRECTORY="${${(%):-%x}:A:h}"
-
-__NASBACKUP_REMOTE_HOST="nas"
-__NASBACKUP_REMOTE_ROOT="/volume1/nasbackup"
-__NASBACKUP_REMOTE_RSYNC_PATH="/bin/rsync"
-__NASBACKUP_RSYNC_FILTER_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup.rsync-filter"
-__NASBACKUP_SECRETS_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup_secrets.zsh"
-
 typeset -ri \
     __NASBACKUP_EXIT_CODE_ERROR=1 \
     __NASBACKUP_EXIT_CODE_CONFIG_FAILED=99 \
@@ -34,33 +26,31 @@ typeset -ri \
     __NASBACKUP_JOB_ERR_NO_OUTPUT=8 \
     __NASBACKUP_JOB_ERR_LOG_UPLOAD=16
 
-__NASBACKUP_LOCAL_LOG_DIRECTORY="$HOME/Library/Logs/nasbackup"
-__NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
-__NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
-__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS=3600
-__NASBACKUP_REMOTE_LOG_DIRECTORY="$__NASBACKUP_REMOTE_ROOT/_logs"
 __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
-__NASBACKUP_LOG_RETENTION_DAYS=365
 
-__nasbackup_get_process_start_epoch() {
+__nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_get_process_start_epoch requires 1 argument"
-        return 1
+        print -u2 "[nasbackup] ERROR: __nasbackup_get_process_start_epoch_or_empty requires 1 argument"
+        return 0
     fi
 
     local -r pid="$1"
     local -r raw="$(LC_ALL=C ps -o lstart= -p "$pid" 2> /dev/null | tr -s ' ' | sed 's/^ //;s/ *$//')"
     if [[ -z "$raw" ]]; then
-        return 1
+        return 0
     fi
-    date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null
+
+    local -r epoch="$(date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null)"
+    if [[ "$epoch" == <-> ]]; then
+        print "$epoch"
+    fi
 }
 
 __nasbackup_try_acquire_lock_atomic() {
     # try to acquire lock
     if mkdir "$__NASBACKUP_LOCK_DIRECTORY" 2> /dev/null; then
         # write pid and process start time as epoch (for pid reuse detection)
-        local -r start_epoch="$(__nasbackup_get_process_start_epoch $$)"
+        local -r start_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
         if [[ -n "$start_epoch" ]] \
             && print "$$" > "$__NASBACKUP_LOCK_DIRECTORY/pid" \
             && print "$start_epoch" > "$__NASBACKUP_LOCK_DIRECTORY/started_at"; then
@@ -133,7 +123,7 @@ __nasbackup_acquire_lock() {
     else
         # process exists: verify process start time to detect possible pid reuse
         local -r stored_start="$(__nasbackup_get_lock_started_at_or_empty)"
-        local -r actual_start="$(__nasbackup_get_process_start_epoch "$lock_pid")"
+        local -r actual_start="$(__nasbackup_get_process_start_epoch_or_empty "$lock_pid")"
         if [[ -n "$stored_start" && -n "$actual_start" && "$stored_start" != "$actual_start" ]]; then
             # pid was reused by a different process => stale
             lock_is_stale=true
@@ -164,21 +154,62 @@ __nasbackup_release_lock() {
 }
 
 __nasbackup_ensure_config() {
-    if [[ ! -f "$__NASBACKUP_SECRETS_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: $__NASBACKUP_SECRETS_FILE does not exist"
-        return 1
-    fi
-    source "$__NASBACKUP_SECRETS_FILE"
+    __NASBACKUP_SCRIPT_DIRECTORY="${${(%):-%x}:A:h}"
 
-    if [[ "$__NASBACKUP_RSYNC_FILTER_FILE" == *' '* ]]; then
-        print -u2 "[nasbackup] ERROR: filter file path must not contain spaces: $__NASBACKUP_RSYNC_FILTER_FILE"
+    __NASBACKUP_CONFIG_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup.config.zsh"
+    if [[ ! -f "$__NASBACKUP_CONFIG_FILE" ]]; then
+        print -u2 "[nasbackup] ERROR: config file not found: $__NASBACKUP_CONFIG_FILE"
         return 1
     fi
+    source "$__NASBACKUP_CONFIG_FILE"
 
-    if [[ ! -f "$__NASBACKUP_RSYNC_FILTER_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: missing rsync filter file: $__NASBACKUP_RSYNC_FILTER_FILE"
+    __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
+    __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
+    __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filter"
+
+    # validate required non-empty strings
+    [[ -n "$__NASBACKUP_REMOTE_HOST"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty";          return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_ROOT"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty";          return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH"    ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty";    return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY"  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty";  return 1; }
+
+    # validate required positive integers
+    [[ "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be a positive integer";     return 1; }
+    [[ "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be a positive integer";    return 1; }
+    [[ "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS must be a positive integer"; return 1; }
+
+    # validate jobs: must have an even number of non-empty values
+    if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
+        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS must not be empty"
         return 1
     fi
+    if (( ${#__NASBACKUP_JOBS[@]} % 2 != 0 )); then
+        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS must have an even number of values (job_name, source_directory) pairs"
+        return 1
+    fi
+    local i
+    for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i++ )); do
+        if [[ -z "${__NASBACKUP_JOBS[$i]}" ]]; then
+            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS[$i] must not be empty"
+            return 1
+        fi
+    done
+
+    # validate job_names: must be unique and only contain letters, digits, hyphens, or underscores
+    local job_names_seen=()
+    for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
+        local job_name="${__NASBACKUP_JOBS[$i]}"
+        if [[ ! "$job_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            print -u2 "[nasbackup] ERROR: config: job_name \"$job_name\" must only contain letters, digits, hyphens, or underscores"
+            return 1
+        fi
+        if [[ "${job_names_seen[(re)$job_name]}" == "$job_name" ]]; then
+            print -u2 "[nasbackup] ERROR: config: duplicate job_name \"$job_name\""
+            return 1
+        fi
+        job_names_seen+=("$job_name")
+    done
 }
 
 __nasbackup_ensure_local_environment() {
@@ -188,13 +219,13 @@ __nasbackup_ensure_local_environment() {
         return 1
     fi
 
-    find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
+    find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
         || print -u2 "[nasbackup] WARNING: local log cleanup failed"
 }
 
 __nasbackup_ensure_remote_environment() {
     local -r remote_env_setup="{ test -x ${(q)__NASBACKUP_REMOTE_RSYNC_PATH} && mkdir -p ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY}; } || exit 1"
-    local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' -mtime +${__NASBACKUP_LOG_RETENTION_DAYS} -delete || exit 2"
+    local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' -mtime +${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS} -delete || exit 2"
 
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
         "$remote_env_setup; $remote_log_cleanup" \
@@ -282,10 +313,15 @@ __nasbackup_write_status_file() {
 
     __nasbackup_ensure_local_environment || return 1
 
+    local -r started_at="$(__nasbackup_get_process_start_epoch_or_empty $$)"
+    if [[ -z "$started_at" ]]; then
+        print -u2 "[nasbackup] WARNING: could not determine process start time for status file"
+    fi
+
     {
         print "run_id=$run_id"
         print "pid=$$"
-        print "started_at=$(__nasbackup_get_process_start_epoch $$)"
+        print "started_at=$started_at"
         print "finished_at=$finished_at"
         print "exit_code=$exit_code"
     } > "$status_file"
@@ -391,15 +427,14 @@ __nasbackup_backup_directory_to_nas() {
         return 1
     fi
 
-    if [[ ! -d "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: local log directory does not exist: $__NASBACKUP_LOCAL_LOG_DIRECTORY"
+    local -r started_at_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
+    if [[ -z "$started_at_epoch" ]]; then
+        print -u2 "[nasbackup] [$job_name] ERROR: could not determine process start time"
         return 1
     fi
-
-    local started_at_formatted
-    started_at_formatted="$(date -r "$(__nasbackup_get_process_start_epoch $$)" "+%Y%m%d-%H%M%S" 2> /dev/null)"
-    if (( $? != 0 )) || [[ -z "$started_at_formatted" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: invalid started_at epoch: $started_at"
+    local -r started_at_formatted="$(date -r "$started_at_epoch" "+%Y%m%d-%H%M%S" 2> /dev/null)"
+    if [[ -z "$started_at_formatted" ]]; then
+        print -u2 "[nasbackup] [$job_name] ERROR: could not format process start time"
         return 1
     fi
 
@@ -414,6 +449,12 @@ __nasbackup_backup_directory_to_nas() {
     local -r combinedlog_file_name="$log_prefix-combined.log"
     local -r local_combinedlog_file="$__NASBACKUP_LOCAL_LOG_DIRECTORY/$combinedlog_file_name"
 
+    local -a rsync_filter_args=()
+    local -r default_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/default.rsync-filter"
+    local -r job_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/$job_name.rsync-filter"
+    [[ -f "$default_filter_file" ]] && rsync_filter_args+=("--filter=merge $default_filter_file")
+    [[ -f "$job_filter_file"     ]] && rsync_filter_args+=("--filter=merge $job_filter_file")
+
     local -ra rsync_args=(
         --recursive
         --links
@@ -423,12 +464,12 @@ __nasbackup_backup_directory_to_nas() {
         # BACKUP: do not use update, BACKUP_SOURCE is the source of truth
         # RESTORE: use update
         # --update
-        
+
         # BACKUP: use delete, BACKUP_SOURCE is the source of truth
         # RESTORE: do not use delete
         --delete
-        
-        --filter="merge $__NASBACKUP_RSYNC_FILTER_FILE"
+
+        "${rsync_filter_args[@]}"
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH"
         --info=progress2,stats2
         --human-readable
@@ -545,9 +586,11 @@ __nasbackup_backup() {
 
         __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_FAILED
 
-        __nasbackup_backup_directory_to_nas "documents" "$HOME/Documents" "$run_id" || return
-        __nasbackup_backup_directory_to_nas "git" "$HOME/git" "$run_id" || return
-        __nasbackup_backup_directory_to_nas "vaultkeychain" "$HOME/Vault Keychain" "$run_id" || return
+        set -- "${__NASBACKUP_JOBS[@]}"
+        while (( $# >= 3 )); do
+            __nasbackup_backup_directory_to_nas "$1" "$2" "$run_id" || return
+            shift 3
+        done
     } always {
         backup_exit_code="$?"
 
