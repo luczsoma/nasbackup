@@ -4,8 +4,8 @@ Backs up local directories to a remote location via rsync over SSH.
 
 ## Prerequisites
 
-- `rsync` installed on the remote and accessible at a known path (default: `/bin/rsync`)
-- An SSH host named configured in `~/.ssh/config` that you can set `__NASBACKUP_REMOTE_HOST` to
+- `rsync` installed locally and on the remote and accessible at a known path (default: `/bin/rsync`)
+- An SSH host configured in `~/.ssh/config` that you can set `__NASBACKUP_REMOTE_HOST` to
 - A writable backup directory on the remote (default: `/nasbackup`)
 
 ## Setup
