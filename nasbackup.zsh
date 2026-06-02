@@ -16,7 +16,7 @@ typeset -ri \
     __NASBACKUP_JOB_EXIT_CODE_NO_RSYNC_LOGFILE_ERROR=2 \
     __NASBACKUP_JOB_EXIT_CODE_RSYNC_LOGFILE_UPLOAD_ERROR=4
 
-__NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
+typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
 __nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
