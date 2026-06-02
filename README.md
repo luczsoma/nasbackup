@@ -13,10 +13,10 @@ A macOS tool that backs up local directories to a remote location via rsync over
 **1. Copy the example config and fill in your values:**
 
 ```zsh
-cp nasbackup.config.zsh.example nasbackup.config.zsh
+cp nasbackup.config.example.zsh nasbackup.config.zsh
 ```
 
-The config file is gitignored. See [nasbackup.config.zsh.example](nasbackup.config.zsh.example) for all available settings with descriptions.
+The config file is gitignored. See [nasbackup.config.example.zsh](nasbackup.config.example.zsh) for all available settings with descriptions.
 
 **2. Create rsync filters:**
 
@@ -52,7 +52,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 ## Configuration
 
-All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.zsh.example](nasbackup.config.zsh.example) for the full reference.
+All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.example.zsh](nasbackup.config.example.zsh) for the full reference.
 
 If `rsync-filters/default.rsync-filter` exists, it is applied to all backup jobs as the base filter. If `rsync-filters/<job_name>.rsync-filter` exists, it is merged on top of the default filter and applied to that job only.
 
