@@ -41,14 +41,14 @@ nasbackup backup
 nasbackup [backup|logs|status|enable|disable|help]
 ```
 
-| Subcommand         | Description                                                  |
-| ------------------ | ------------------------------------------------------------ |
-| `backup` (default) | Run all configured backup jobs                               |
-| `logs`             | Open the local log directory in Finder                       |
-| `status`           | Show whether a backup is running, last run, and last success |
-| `enable`           | Enable the launchd agent (not yet implemented)               |
-| `disable`          | Disable the launchd agent (not yet implemented)              |
-| `help`             | Print usage                                                  |
+| Subcommand         | Description                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `backup` (default) | Run all configured backup jobs                                                                           |
+| `logs`             | Open the local log directory in Finder                                                                   |
+| `status`           | Show whether a backup is running, last run, last success, and launchd agent status (not yet implemented) |
+| `enable`           | Enable the launchd agent (not yet implemented)                                                           |
+| `disable`          | Disable the launchd agent (not yet implemented)                                                          |
+| `help`             | Print usage                                                                                              |
 
 ## Configuration
 
