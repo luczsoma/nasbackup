@@ -72,9 +72,9 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 | `1–7`             | Backup job failed: bitmask of bit0 = rsync failed, bit1 = no log file, bit2 = log upload failed |
 | `8`               | Generic error                                                                                   |
 | `9`               | Config error (missing or invalid config)                                                        |
-| `10`              | Local environment setup failed                                                                  |
-| `11`              | Remote unreachable or remote environment setup failed                                           |
-| `12`              | Lock acquisition failed (another backup already running)                                        |
+| `10`              | Lock acquisition failed (another backup already running)                                        |
+| `11`              | Local environment setup failed                                                                  |
+| `12`              | Remote unreachable or remote environment setup failed                                           |
 | `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                     |
 
 ## Logs
