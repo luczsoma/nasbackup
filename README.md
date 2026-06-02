@@ -54,7 +54,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.zsh.example](nasbackup.config.zsh.example) for the full reference.
 
-All jobs share `rsync-filter/default.rsync-filter`. For per-job filtering, create `rsync-filter/<job_name>.rsync-filter`.
+All jobs share `rsync-filter/default.rsync-filter`. For per-job filtering, create `rsync-filter/<job_name>.rsync-filter` to be applied on top of the default.
 
 ## Healthchecks.io
 
