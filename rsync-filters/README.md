@@ -1,4 +1,4 @@
-# rsync-filter
+# rsync-filters
 
 Each backup job uses `default.rsync-filter` as its base filter.
 

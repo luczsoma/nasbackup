@@ -20,7 +20,7 @@ The config file is gitignored. See [nasbackup.config.zsh.example](nasbackup.conf
 
 **2. Create rsync filters:**
 
-The `rsync-filter/default.rsync-filter` file, if exists, is applied to all backup jobs. You can also create per-job filter files named `<job_name>.rsync-filter` in the same directory, to be applied on top of the default.
+The `rsync-filters/default.rsync-filter` file, if exists, is applied to all backup jobs. You can also create per-job filter files named `<job_name>.rsync-filter` in the same directory, to be applied on top of the default.
 
 **3. Make the script executable and run it:**
 
@@ -54,7 +54,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.zsh.example](nasbackup.config.zsh.example) for the full reference.
 
-All jobs share `rsync-filter/default.rsync-filter`. For per-job filtering, create `rsync-filter/<job_name>.rsync-filter` to be applied on top of the default.
+All jobs share `rsync-filters/default.rsync-filter`. For per-job filtering, create `rsync-filters/<job_name>.rsync-filter` to be applied on top of the default.
 
 ## Healthchecks.io
 

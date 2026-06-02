@@ -1,3 +1,3 @@
-rsync-filter/*
-!rsync-filter/README.md
+rsync-filters/*
+!rsync-filters/README.md
 nasbackup.config.zsh

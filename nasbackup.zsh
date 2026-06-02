@@ -155,7 +155,7 @@ __nasbackup_ensure_config() {
 
     __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
     __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
-    __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filter"
+    __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
 
     # validate required non-empty strings
     [[ -n "$__NASBACKUP_REMOTE_HOST"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty";          return 1; }
