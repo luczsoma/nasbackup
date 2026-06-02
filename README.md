@@ -29,7 +29,7 @@ chmod +x nasbackup.zsh
 ./nasbackup.zsh backup
 ```
 
-Or symlink / add to `$PATH` for shorter invocation:
+Or alias / symlink / add to `$PATH` for shorter invocation:
 
 ```zsh
 nasbackup backup
@@ -38,7 +38,7 @@ nasbackup backup
 ## Usage
 
 ```
-nasbackup [backup|logs|status|help]
+nasbackup [backup|logs|status|enable|disable|help]
 ```
 
 | Subcommand         | Description                                                  |
@@ -46,11 +46,13 @@ nasbackup [backup|logs|status|help]
 | `backup` (default) | Run all configured backup jobs                               |
 | `logs`             | Open the local log directory in Finder                       |
 | `status`           | Show whether a backup is running, last run, and last success |
+| `enable`           | Enable the launchd agent (not yet implemented)               |
+| `disable`          | Disable the launchd agent (not yet implemented)              |
 | `help`             | Print usage                                                  |
 
 ## Configuration
 
-All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.zshexample.](nasbackup.config.zshexample.) for the full reference.
+All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.zsh.example](nasbackup.config.zsh.example) for the full reference.
 
 All jobs share `rsync-filter/default.rsync-filter`. For per-job filtering, create `rsync-filter/<job_name>.rsync-filter`.
 
@@ -64,24 +66,23 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 
 ## Exit codes
 
-| Code              | Meaning                                                                                                    |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `0`               | Success                                                                                                    |
-| `1`               | Generic error                                                                                              |
-| `2–31`            | Per-job bitmask (bit1 = rsync failed, bit2 = no log file, bit3 = no output file, bit4 = log upload failed) |
-| `99`              | Config failed                                                                                              |
-| `100`             | Local environment setup failed                                                                             |
-| `101`             | NAS unreachable or remote environment setup failed                                                         |
-| `102`             | Lock acquisition failed (another backup already running)                                                   |
-| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                |
+| Code              | Meaning                                                             |
+| ----------------- | ------------------------------------------------------------------- |
+| `0`               | Success                                                             |
+| `1–7`             | Per-job bitmask: bit0 = rsync failed, bit1 = no log file, bit2 = log upload failed |
+| `8`               | Generic error                                                       |
+| `9`               | Config error (missing or invalid config)                            |
+| `10`              | Local environment setup failed                                      |
+| `11`              | NAS unreachable or remote environment setup failed                  |
+| `12`              | Lock acquisition failed (another backup already running)            |
+| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                         |
 
 ## Logs
 
-Each job produces two local log files under `__NASBACKUP_LOCAL_LOG_DIRECTORY`:
+Each job produces a local log file under `__NASBACKUP_LOCAL_LOG_DIRECTORY`:
 
-- `nasbackup-<date>-<run_id>-<job_name>-rsynclogfile.log` — structured per-file rsync log (`--log-file`)
-- `nasbackup-<date>-<run_id>-<job_name>-rsyncoutput.log` — rsync stdout/stderr
+- `nasbackup-<date>-<run_id>-<job_name>.log` — structured per-file rsync log (`--log-file`)
 
-Both are merged into a combined log and uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the NAS. On job failure, the combined log is also copied to `~/Desktop/NASBACKUP_ERROR_*.log`.
+The log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the NAS after each job.
 
 Local and remote logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` / `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted at the start of each run.

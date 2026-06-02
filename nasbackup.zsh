@@ -1,30 +1,20 @@
 #!/usr/bin/env zsh
 
-# Assumes that "nas" is set as an SSH host (usually in ~/.ssh/config),
-# and that there is a writable /volume1/nasbackup folder on the NAS.
-
-# TODO:
-# launchd (enable/disable/status):
-#   run it every 15 minutes (StartCalendarInterval)
-#   man launchctl
-#   man launchd.plist
-
 typeset -ri \
-    __NASBACKUP_EXIT_CODE_ERROR=1 \
-    __NASBACKUP_EXIT_CODE_CONFIG_FAILED=99 \
-    __NASBACKUP_EXIT_CODE_LOCAL_ENV_FAILED=100 \
-    __NASBACKUP_EXIT_CODE_REMOTE_ENV_FAILED=101 \
-    __NASBACKUP_EXIT_CODE_LOCK_FAILED=102 \
+    __NASBACKUP_EXIT_CODE_GENERIC_ERROR=8 \
+    __NASBACKUP_EXIT_CODE_CONFIG_ERROR=9 \
+    __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR=10 \
+    __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR=11 \
+    __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR=12 \
     __NASBACKUP_EXIT_CODE_SIGNAL_HUP=129 \
     __NASBACKUP_EXIT_CODE_SIGNAL_INT=130 \
     __NASBACKUP_EXIT_CODE_SIGNAL_QUIT=131 \
     __NASBACKUP_EXIT_CODE_SIGNAL_TERM=143
 
 typeset -ri \
-    __NASBACKUP_JOB_ERR_RSYNC=2 \
-    __NASBACKUP_JOB_ERR_NO_LOGFILE=4 \
-    __NASBACKUP_JOB_ERR_NO_OUTPUT=8 \
-    __NASBACKUP_JOB_ERR_LOG_UPLOAD=16
+    __NASBACKUP_JOB_EXIT_CODE_RSYNC_ERROR=1 \
+    __NASBACKUP_JOB_EXIT_CODE_NO_RSYNC_LOGFILE_ERROR=2 \
+    __NASBACKUP_JOB_EXIT_CODE_RSYNC_LOGFILE_UPLOAD_ERROR=4
 
 __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
@@ -408,46 +398,43 @@ __nasbackup_last_success_is_overdue() {
 __nasbackup_backup_directory_to_nas() {
     if (( $# != 3 )); then
         print -u2 "[nasbackup] ERROR: __nasbackup_backup_directory_to_nas requires 3 arguments"
-        return 1
+        return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
 
     local -r job_name="$1"
-    local -r source_dir_without_trailing_slash="${2%/}"
+    local -r source_dir="${2%/}"
     local -r run_id="$3"
 
-    local -r log_banner="Starting backup job: $job_name ($source_dir_without_trailing_slash)"
+    local is_tty=0
+    # test stderr, not stdout: output goes to fd 2, so fd 2 reflects whether we have a terminal
+    [[ -t 2 ]] && is_tty=1
 
-    print -u2 "========================================================================"
-    print -u2 " $log_banner"
-    print -u2 "========================================================================"
+    local -r log_banner="Starting backup job: $job_name ($source_dir)"
+    if (( is_tty )); then
+        print -u2 "========================================================================"
+        print -u2 " $log_banner"
+        print -u2 "========================================================================"
+    fi
+
     __nasbackup_healthchecks_ping "log" "$run_id" "$log_banner"
 
-    if [[ ! -d "$source_dir_without_trailing_slash" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: source is not a directory: $source_dir_without_trailing_slash"
-        return 1
+    if [[ ! -d "$source_dir" ]]; then
+        print -u2 "[nasbackup] [$job_name] ERROR: source is not a directory: $source_dir"
+        return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
     fi
 
     local -r started_at_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
     if [[ -z "$started_at_epoch" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: could not determine process start time"
-        return 1
+        return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
     local -r started_at_formatted="$(date -r "$started_at_epoch" "+%Y%m%d-%H%M%S" 2> /dev/null)"
     if [[ -z "$started_at_formatted" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: could not format process start time"
-        return 1
+        return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
 
-    local -r log_prefix="nasbackup-$started_at_formatted-$run_id-$job_name"
-
-    local -r rsynclogfile_file_name="$log_prefix-rsynclogfile.log"
-    local -r local_rsynclogfile_file="$__NASBACKUP_LOCAL_LOG_DIRECTORY/$rsynclogfile_file_name"
-    
-    local -r rsyncoutput_file_name="$log_prefix-rsyncoutput.log"
-    local -r local_rsyncoutput_file="$__NASBACKUP_LOCAL_LOG_DIRECTORY/$rsyncoutput_file_name"
-
-    local -r combinedlog_file_name="$log_prefix-combined.log"
-    local -r local_combinedlog_file="$__NASBACKUP_LOCAL_LOG_DIRECTORY/$combinedlog_file_name"
+    local -r local_rsynclogfile="$__NASBACKUP_LOCAL_LOG_DIRECTORY/nasbackup-$started_at_formatted-$run_id-$job_name.log"
 
     local -a rsync_filter_args=()
     local -r default_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/default.rsync-filter"
@@ -461,107 +448,58 @@ __nasbackup_backup_directory_to_nas() {
         --perms
         --times
 
-        # BACKUP: do not use update, BACKUP_SOURCE is the source of truth
-        # RESTORE: use update
+        # BACKUP: do not use update, backup source is the source of truth
+        # RESTORE: use update, so newer files on backup source are not overwritten
         # --update
 
-        # BACKUP: use delete, BACKUP_SOURCE is the source of truth
-        # RESTORE: do not use delete
+        # BACKUP: use delete, backup source is the source of truth
+        # RESTORE: do not use delete, so existing files on backup source are not deleted
         --delete
 
         "${rsync_filter_args[@]}"
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH"
         --info=progress2,stats2
         --human-readable
-        --log-file="$local_rsynclogfile_file"
+        --log-file="$local_rsynclogfile"
         --log-file-format="%i %f%L (size = %'lB = %''l, mtime = %M)"
     )
 
-    if [[ -t 1 ]]; then
-        rsync \
-            "${rsync_args[@]}" \
-            "$source_dir_without_trailing_slash" \
-            "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
-            2>&1 | tee "$local_rsyncoutput_file" >&2
-        local -r rsync_exit_code="${pipestatus[1]}"
+    # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)
+    # non-TTY: discard stdout progress & stats (so it doesn’t pollute launchd logs)
+    local stdout_target
+    if (( is_tty )); then
+        stdout_target=/dev/stderr
     else
-        rsync \
-            "${rsync_args[@]}" \
-            "$source_dir_without_trailing_slash" \
-            "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
-            > "$local_rsyncoutput_file" 2>&1
-        local -r rsync_exit_code="$?"
+        stdout_target=/dev/null
     fi
 
-    : > "$local_combinedlog_file"
-
-    if [[ -f "$local_rsynclogfile_file" ]]; then
-        cat "$local_rsynclogfile_file" >> "$local_combinedlog_file"
-    else
-        print "ERROR: rsync produced no log file" >> "$local_combinedlog_file"
-    fi
-
-    {
-        print ""
-        print "=========================================================================================="
-        print ""
-    } >> "$local_combinedlog_file"
-
-    if [[ -f "$local_rsyncoutput_file" ]]; then
-        cat "$local_rsyncoutput_file" >> "$local_combinedlog_file"
-    else
-        print "ERROR: no rsync stdout/stderr log file was produced" >> "$local_combinedlog_file"
-    fi
+    rsync "${rsync_args[@]}" "$source_dir" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
+        > $stdout_target
+    local -r rsync_exit_code="$?"
 
     rsync \
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
-        "$local_combinedlog_file" \
-        "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY/$combinedlog_file_name" \
-        > /dev/null 2>&1
+        "$local_rsynclogfile" \
+        "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
+        >&2
     local -r log_upload_exit_code="$?"
 
-    local return_value=0
-    local errors=""
+    local job_exit_code=0
 
     if (( rsync_exit_code != 0 )); then
-        errors+=$'\n rsync failed (exit code '$rsync_exit_code')'
         print -u2 "[nasbackup] [$job_name] ERROR: rsync failed (exit code $rsync_exit_code)"
-        (( return_value |= __NASBACKUP_JOB_ERR_RSYNC ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_RSYNC_ERROR ))
     fi
-
-    if [[ ! -f "$local_rsynclogfile_file" ]]; then
-        errors+=$'\n rsync produced no log file'
+    if [[ ! -f "$local_rsynclogfile" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: rsync produced no log file"
-        (( return_value |= __NASBACKUP_JOB_ERR_NO_LOGFILE ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_NO_RSYNC_LOGFILE_ERROR ))
     fi
-
-    if [[ ! -f "$local_rsyncoutput_file" ]]; then
-        errors+=$'\n no rsync stdout/stderr log file was produced'
-        print -u2 "[nasbackup] [$job_name] ERROR: no rsync stdout/stderr log file was produced"
-        (( return_value |= __NASBACKUP_JOB_ERR_NO_OUTPUT ))
-    fi
-
     if (( log_upload_exit_code != 0 )); then
-        errors+=$'\n log upload failed'
         print -u2 "[nasbackup] [$job_name] ERROR: log upload failed"
-        (( return_value |= __NASBACKUP_JOB_ERR_LOG_UPLOAD ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_RSYNC_LOGFILE_UPLOAD_ERROR ))
     fi
 
-    local -r desktop_error_file="$HOME/Desktop/NASBACKUP_ERROR_$combinedlog_file_name"
-    if (( return_value != 0 )); then
-        if cp "$local_combinedlog_file" "$desktop_error_file" 2> /dev/null; then
-            {
-                print ""
-                print "=========================================================================================="
-                print "ERRORS:"
-            } >> "$desktop_error_file"
-            print "$errors" >> "$desktop_error_file"
-        else
-            print -u2 "[nasbackup] [$job_name] WARNING: could not write error file to Desktop"
-        fi
-    fi
-
-    return "$return_value"
+    return "$job_exit_code"
 }
 
 __nasbackup_backup() {
@@ -575,16 +513,16 @@ __nasbackup_backup() {
 
         local -r run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
-        __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_FAILED
+        __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
         if [[ -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY:-}" && -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG:-}" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
         fi
 
-        __nasbackup_ensure_local_environment || return $__NASBACKUP_EXIT_CODE_LOCAL_ENV_FAILED
-        __nasbackup_ensure_remote_environment || return $__NASBACKUP_EXIT_CODE_REMOTE_ENV_FAILED
+        __nasbackup_ensure_local_environment || return $__NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR
+        __nasbackup_ensure_remote_environment || return $__NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR
 
-        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_FAILED
+        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
 
         set -- "${__NASBACKUP_JOBS[@]}"
         while (( $# >= 2 )); do
@@ -615,6 +553,8 @@ __nasbackup_backup() {
 }
 
 __nasbackup_logs() {
+    __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
+
     if [[ -d "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]]; then
         open "$__NASBACKUP_LOCAL_LOG_DIRECTORY"
     else
@@ -624,6 +564,7 @@ __nasbackup_logs() {
 
 __nasbackup_status() {
     # TODO: enabled/disabled
+    __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if [[ ! -d "$__NASBACKUP_LOCK_DIRECTORY" ]]; then
         print -u2 "[nasbackup] no backup is currently in progress"
@@ -653,12 +594,12 @@ __nasbackup_status() {
 
 __nasbackup_enable() {
     print -u2 "[nasbackup] ERROR: enable is not implemented yet"
-    return $__NASBACKUP_EXIT_CODE_ERROR
+    return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
 }
 
 __nasbackup_disable() {
     print -u2 "[nasbackup] ERROR: disable is not implemented yet"
-    return $__NASBACKUP_EXIT_CODE_ERROR
+    return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
 }
 
 __nasbackup_help() {
@@ -699,7 +640,7 @@ __nasbackup_main() {
             ;;
         *)
             __nasbackup_help
-            return $__NASBACKUP_EXIT_CODE_ERROR
+            return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
             ;;
     esac
 }
