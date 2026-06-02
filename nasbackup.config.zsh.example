@@ -28,7 +28,7 @@ __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS=3600
 ###################
 # The remote host as it is configured for SSH (usually in ~/.ssh/config)
 __NASBACKUP_REMOTE_HOST="nas"
-# The root directory on the remote into which the backup jobs’ folders will be backed up
+# The root directory on the remote into which the backup jobs’ source directories will be backed up
 __NASBACKUP_REMOTE_ROOT="/nasbackup"
 # The directory on the remote host into which log files are copied
 __NASBACKUP_REMOTE_LOG_DIRECTORY="$__NASBACKUP_REMOTE_ROOT/_logs"
