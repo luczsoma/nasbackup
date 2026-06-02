@@ -529,10 +529,10 @@ __nasbackup_backup() {
             __nasbackup_healthchecks_ping "start" "$run_id"
         fi
 
+        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
+
         __nasbackup_ensure_local_environment || return $__NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR
         __nasbackup_ensure_remote_environment || return $__NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR
-
-        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
 
         set -- "${__NASBACKUP_JOBS[@]}"
         while (( $# >= 2 )); do
