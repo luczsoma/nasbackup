@@ -164,10 +164,14 @@ __nasbackup_ensure_config() {
     [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH"    ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty";    return 1; }
     [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY"  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty";  return 1; }
 
-    # validate required positive integers
-    [[ "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be a positive integer";     return 1; }
-    [[ "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be a positive integer";    return 1; }
-    [[ "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" == <1-> ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS must be a positive integer"; return 1; }
+    # validate required (but possibly empty) strings
+    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)";  return 1; }
+    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+
+    # validate required (but possibly empty) non-negative integers
+    { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS     ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";     return 1; }
+    { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS    ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";    return 1; }
+    { [[ -v __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS ]] && [[ -z "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" || "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
 
     # validate jobs: must have an even number of non-empty values
     if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
@@ -209,8 +213,10 @@ __nasbackup_ensure_local_environment() {
         return 1
     fi
 
-    find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
-        || print -u2 "[nasbackup] WARNING: local log cleanup failed"
+    if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
+        find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
+            || print -u2 "[nasbackup] WARNING: local log cleanup failed"
+    fi
 }
 
 __nasbackup_ensure_remote_environment() {
@@ -218,7 +224,7 @@ __nasbackup_ensure_remote_environment() {
     local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' -mtime +${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS} -delete || exit 2"
 
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
-        "$remote_env_setup; $remote_log_cleanup" \
+        "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
         2> /dev/null
     local -r ssh_remote_command_exit_code=$?
 
@@ -253,7 +259,7 @@ __nasbackup_healthchecks_ping() {
         return 1
     fi
 
-    if [[ -z "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY:-}" || -z "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG:-}" ]]; then
+    if [[ -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
         return 0
     fi
 
@@ -382,6 +388,10 @@ __nasbackup_print_status_file() {
 }
 
 __nasbackup_last_success_is_overdue() {
+    if [[ -z "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" ]]; then
+        return 1
+    fi
+
     if [[ ! -f "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
         return 0
     fi
@@ -515,7 +525,7 @@ __nasbackup_backup() {
 
         __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
-        if [[ -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY:-}" && -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG:-}" ]]; then
+        if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
         fi
 
@@ -541,7 +551,7 @@ __nasbackup_backup() {
                 || print -u2 "[nasbackup] WARNING: failed to write last-success status file"
         fi
 
-        if [[ -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY:-}" && -n "${__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG:-}" ]]; then
+        if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "$backup_exit_code" "$run_id"
         fi
 
