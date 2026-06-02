@@ -62,27 +62,29 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 
 - a **start** ping before the first job
 - a **log** ping at the start of each job
-- a **finish** ping (with exit code) after all jobs complete — even if the NAS is unreachable or a job fails
+- a **finish** ping (with exit code) after all jobs complete — even if the remote is unreachable or a job fails
 
 ## Exit codes
 
-| Code              | Meaning                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------- |
-| `0`               | Success                                                                            |
-| `1–7`             | Per-job bitmask: bit0 = rsync failed, bit1 = no log file, bit2 = log upload failed |
-| `8`               | Generic error                                                                      |
-| `9`               | Config error (missing or invalid config)                                           |
-| `10`              | Local environment setup failed                                                     |
-| `11`              | NAS unreachable or remote environment setup failed                                 |
-| `12`              | Lock acquisition failed (another backup already running)                           |
-| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                        |
+| Code              | Meaning                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `0`               | Success                                                                                         |
+| `1–7`             | Backup job failed: bitmask of bit0 = rsync failed, bit1 = no log file, bit2 = log upload failed |
+| `8`               | Generic error                                                                                   |
+| `9`               | Config error (missing or invalid config)                                                        |
+| `10`              | Local environment setup failed                                                                  |
+| `11`              | Remote unreachable or remote environment setup failed                                           |
+| `12`              | Lock acquisition failed (another backup already running)                                        |
+| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                     |
 
 ## Logs
 
-Each job produces a local log file under `__NASBACKUP_LOCAL_LOG_DIRECTORY`:
+Each job writes a structured per-file rsync log (`--log-file`) to `__NASBACKUP_LOCAL_LOG_DIRECTORY`:
 
-- `nasbackup-<date>-<run_id>-<job_name>.log` — structured per-file rsync log (`--log-file`)
+```
+nasbackup-<date>-<run_id>-<job_name>.log
+```
 
-The log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the NAS after each job.
+After each job completes, the log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the remote.
 
-Local and remote logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` / `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted at the start of each run.
+At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` days are deleted (if set), and remote logs older than `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted (if set).
