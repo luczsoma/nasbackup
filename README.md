@@ -1,10 +1,10 @@
 # nasbackup
 
-Backs up local directories to a remote location via rsync over SSH.
+A macOS tool that backs up local directories to a remote location via rsync over SSH, with optional launchd scheduling.
 
 ## Prerequisites
 
-- `rsync` installed locally and on the remote and accessible at a known path (default: `/bin/rsync`)
+- `rsync` installed on both ends, accessible at a known path on the remote (default: `/bin/rsync`)
 - An SSH host configured in `~/.ssh/config` that you can set `__NASBACKUP_REMOTE_HOST` to
 - A writable backup directory on the remote (default: `/nasbackup`)
 
@@ -66,16 +66,16 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 
 ## Exit codes
 
-| Code              | Meaning                                                             |
-| ----------------- | ------------------------------------------------------------------- |
-| `0`               | Success                                                             |
+| Code              | Meaning                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| `0`               | Success                                                                            |
 | `1–7`             | Per-job bitmask: bit0 = rsync failed, bit1 = no log file, bit2 = log upload failed |
-| `8`               | Generic error                                                       |
-| `9`               | Config error (missing or invalid config)                            |
-| `10`              | Local environment setup failed                                      |
-| `11`              | NAS unreachable or remote environment setup failed                  |
-| `12`              | Lock acquisition failed (another backup already running)            |
-| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                         |
+| `8`               | Generic error                                                                      |
+| `9`               | Config error (missing or invalid config)                                           |
+| `10`              | Local environment setup failed                                                     |
+| `11`              | NAS unreachable or remote environment setup failed                                 |
+| `12`              | Lock acquisition failed (another backup already running)                           |
+| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                        |
 
 ## Logs
 
