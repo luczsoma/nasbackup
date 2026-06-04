@@ -5,9 +5,6 @@
 #
 # job_name     - used in log file names; must be unique and only contain letters, digits, hyphens, or underscores
 # source_dir   - local directory to back up; trailing slash is optional
-#
-# If rsync-filters/default.rsync-filter exists, it is applied to all backup jobs as the base filter.
-# If a file named rsync-filters/<job_name>.rsync-filter exists, it is merged on top of the default filter and applied to that job only.
 __NASBACKUP_JOBS=(
     "documents"     "$HOME/Documents"
     "pictures"      "$HOME/Pictures"

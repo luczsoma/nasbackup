@@ -4,9 +4,9 @@ A macOS tool that backs up local directories to a remote location via rsync over
 
 ## Prerequisites
 
-- `rsync` installed on both ends, accessible at a known path on the remote (default: `/bin/rsync`)
+- `rsync` installed on both ends, accessible at a known path on the remote
 - An SSH host configured in `~/.ssh/config` that you can set `__NASBACKUP_REMOTE_HOST` to
-- A writable backup directory on the remote (default: `/nasbackup`)
+- A writable backup directory on the remote
 
 ## Setup
 
@@ -18,14 +18,10 @@ cp nasbackup.config.example.zsh nasbackup.config.zsh
 
 The config file is gitignored. See [nasbackup.config.example.zsh](nasbackup.config.example.zsh) for all available settings with descriptions.
 
-**2. Create rsync filters:**
-
-If `rsync-filters/default.rsync-filter` exists, it is applied to all backup jobs as the base filter. If a file named `rsync-filters/<job_name>.rsync-filter` exists, it is merged on top of the default filter and applied to that job only.
-
-**3. Make the script executable and run it:**
+**2. Make the script executable and run it:**
 
 ```zsh
-chmod +x nasbackup.zsh
+chmod u+x nasbackup.zsh
 ./nasbackup.zsh backup
 ```
 
@@ -54,7 +50,9 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup.config.example.zsh](nasbackup.config.example.zsh) for the full reference.
 
-If `rsync-filters/default.rsync-filter` exists, it is applied to all backup jobs as the base filter. If `rsync-filters/<job_name>.rsync-filter` exists, it is merged on top of the default filter and applied to that job only.
+## Filtering
+
+You can control what gets included or excluded from backups with rsync’s versatile filtering. See [rsync-filters/README.md](rsync-filters/README.md) for filtering details.
 
 ## Healthchecks.io
 
