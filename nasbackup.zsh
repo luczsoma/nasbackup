@@ -197,6 +197,10 @@ __nasbackup_ensure_config() {
             print -u2 "[nasbackup] ERROR: config: job_name \"$job_name\" must only contain letters, digits, hyphens, or underscores"
             return 1
         fi
+        if [[ "$job_name" == "default" ]]; then
+            print -u2 "[nasbackup] ERROR: config: job_name \"default\" is reserved"
+            return 1
+        fi
         if [[ "${job_names_seen[(re)$job_name]}" == "$job_name" ]]; then
             print -u2 "[nasbackup] ERROR: config: duplicate job_name \"$job_name\""
             return 1

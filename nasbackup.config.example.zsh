@@ -3,7 +3,7 @@
 ###################
 # Each backup job is a (job_name, source_directory) pair:
 #
-# job_name     - used in log file names; must be unique and only contain letters, digits, hyphens, or underscores
+# job_name     - used in log file names; must be unique, must only contain letters, digits, hyphens, or underscores; must not be "default"
 # source_dir   - local directory to back up; trailing slash is optional
 __NASBACKUP_JOBS=(
     "documents"     "$HOME/Documents"
