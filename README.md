@@ -39,12 +39,16 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 | Subcommand         | Description                                                                                              |
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `backup` (default) | Run all configured backup jobs                                                                           |
+| `backup` (default) | Run all configured jobs sequentially in the order they are defined in the config                         |
 | `logs`             | Open the local log directory in Finder                                                                   |
 | `status`           | Show whether a backup is running, last run, last success, and launchd agent status (not yet implemented) |
 | `enable`           | Enable the launchd agent (not yet implemented)                                                           |
 | `disable`          | Disable the launchd agent (not yet implemented)                                                          |
 | `help`             | Print usage                                                                                              |
+
+## Backup runs and jobs
+
+Each `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete`. If a job fails, the run stops and remaining jobs are not executed.
 
 ## Configuration
 
