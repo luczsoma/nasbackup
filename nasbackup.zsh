@@ -171,7 +171,6 @@ __nasbackup_ensure_config() {
     # validate required (but possibly empty) non-negative integers
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS     ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";     return 1; }
     { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS    ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";    return 1; }
-    { [[ -v __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS ]] && [[ -z "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" || "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
 
     # validate jobs: must have an even number of non-empty values
     if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
@@ -387,23 +386,6 @@ __nasbackup_print_status_file() {
     print -u2 "$status_label: ${run_id:-unknown} (pid=${pid:-unknown}) from $started_at to $finished_at with exit_code=${exit_code:-unknown}"
 }
 
-__nasbackup_last_success_is_overdue() {
-    if [[ -z "$__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS" ]]; then
-        return 1
-    fi
-
-    if [[ ! -f "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
-        return 0
-    fi
-
-    local -r last_success_finished_at="$(__nasbackup_get_status_value_or_empty "$__NASBACKUP_LAST_SUCCESS_FILE" finished_at)"
-    if [[ -z "$last_success_finished_at" || "$last_success_finished_at" != <-> ]]; then
-        return 0
-    fi
-
-    local -r now_epoch="$(date '+%s')"
-    (( now_epoch - last_success_finished_at > __NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS ))
-}
 
 __nasbackup_backup_directory_to_nas() {
     if (( $# != 3 )); then
@@ -594,10 +576,6 @@ __nasbackup_status() {
     print -u2 ""
     __nasbackup_print_status_file last_run
     __nasbackup_print_status_file last_success
-
-    if __nasbackup_last_success_is_overdue; then
-        print -u2 "WARNING: last successful backup is missing or older than $__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS seconds"
-    fi
 
     return 0
 }

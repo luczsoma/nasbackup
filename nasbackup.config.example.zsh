@@ -20,8 +20,6 @@ __NASBACKUP_JOBS=(
 __NASBACKUP_LOCAL_LOG_DIRECTORY="$HOME/Library/Logs/nasbackup"
 # Local log files older than this many days will be deleted on the next run; 0 means delete all logs on each run; empty means keep logs indefinitely
 __NASBACKUP_LOCAL_LOG_RETENTION_DAYS=365
-# If the last successful backup finished more than this many seconds ago, the status command will display a warning; 0 means always warn; empty means never warn
-__NASBACKUP_LAST_SUCCESS_MAX_AGE_SECONDS=3600
 
 ###################
 # REMOTE SETTINGS #
