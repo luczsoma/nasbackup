@@ -62,9 +62,9 @@ You can control what gets included or excluded from backups with rsync’s versa
 
 Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG` in the config to enable monitoring. The script sends:
 
-- a **start** ping before the first job
+- a **start** ping at the start of a backup run
 - a **log** ping at the start of each job
-- a **finish** ping (with exit code) after all jobs complete — even if the remote is unreachable or a job fails
+- a **finish** ping (with exit code) at the end of a backup run
 
 ## Exit codes
 
