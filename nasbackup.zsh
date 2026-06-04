@@ -158,11 +158,12 @@ __nasbackup_ensure_config() {
     __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
 
     # validate required non-empty strings
+    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY"  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty";  return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH"     ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty";     return 1; }
     [[ -n "$__NASBACKUP_REMOTE_HOST"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty";          return 1; }
     [[ -n "$__NASBACKUP_REMOTE_ROOT"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty";          return 1; }
     [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
     [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH"    ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty";    return 1; }
-    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY"  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty";  return 1; }
 
     # validate required (but possibly empty) strings
     [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)";  return 1; }
@@ -473,11 +474,11 @@ __nasbackup_backup_directory_to_nas() {
         stdout_target=/dev/null
     fi
 
-    rsync "${rsync_args[@]}" "$source_dir" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
+    "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
         > $stdout_target
     local -r rsync_exit_code="$?"
 
-    rsync \
+    "$__NASBACKUP_LOCAL_RSYNC_PATH" \
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
         "$local_rsynclogfile" \
         "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \

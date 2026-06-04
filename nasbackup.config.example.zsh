@@ -17,6 +17,8 @@ __NASBACKUP_JOBS=(
 __NASBACKUP_LOCAL_LOG_DIRECTORY="$HOME/Library/Logs/nasbackup"
 # Local log files older than this many days will be deleted on the next run; 0 means delete all logs on each run; empty means keep logs indefinitely
 __NASBACKUP_LOCAL_LOG_RETENTION_DAYS=365
+# The path of the local rsync binary
+__NASBACKUP_LOCAL_RSYNC_PATH="rsync"
 
 ###################
 # REMOTE SETTINGS #
