@@ -172,6 +172,9 @@ __nasbackup_ensure_config() {
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS     ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";     return 1; }
     { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS    ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";    return 1; }
 
+    # validate extra rsync args: must be defined (but may be empty)
+    [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
+
     # validate jobs: must have an even number of non-empty values
     if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
         print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS must not be empty"
@@ -458,6 +461,7 @@ __nasbackup_backup_directory_to_nas() {
         --human-readable
         --log-file="$local_rsynclogfile"
         --log-file-format="%i %f%L (size = %'lB = %''l, mtime = %M)"
+        "${__NASBACKUP_EXTRA_RSYNC_ARGS[@]}"
     )
 
     # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)

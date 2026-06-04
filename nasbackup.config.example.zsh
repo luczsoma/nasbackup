@@ -40,3 +40,14 @@ __NASBACKUP_REMOTE_RSYNC_PATH="/bin/rsync"
 __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY=""
 # Your Healthchecks.io check’s slug
 __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG=""
+
+#####################
+# ADVANCED SETTINGS #
+#####################
+# Extra rsync arguments appended after all built-in args; use with care as they can override or conflict with built-in args
+__NASBACKUP_EXTRA_RSYNC_ARGS=(
+    # Example: add --checksum to compare files by checksum (slow!) instead of size+mtime:
+    # --checksum
+    # Example: add --no-ARG to turn off a built-in arg:
+    # --no-delete
+)

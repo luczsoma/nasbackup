@@ -48,7 +48,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 ## Backup runs and jobs
 
-Each `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete`. If a job fails, the run stops and remaining jobs are not executed.
+Each `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). If a job fails, the run stops and remaining jobs are not executed.
 
 ## Configuration
 
