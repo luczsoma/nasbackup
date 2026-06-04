@@ -1,5 +1,9 @@
 #!/usr/bin/env zsh
 
+# nasbackup
+# A macOS tool that backs up local directories to a remote location via rsync over SSH, with optional launchd scheduling.
+# https://github.com/luczsoma/nasbackup
+
 typeset -ri \
     __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_ERROR=1 \
     __NASBACKUP_JOB_EXIT_CODE_BITMASK_NO_RSYNC_LOGFILE_ERROR=2 \
