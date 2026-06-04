@@ -66,16 +66,16 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 
 ## Exit codes
 
-| Code              | Meaning                                                                                                        |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| `0`               | Success                                                                                                        |
-| `1–7`             | Backup job failed: bitmask of bit0 = rsync failed, bit1 = rsync produced no log file, bit2 = log upload failed |
-| `8`               | Generic error                                                                                                  |
-| `9`               | Config error (missing or invalid config)                                                                       |
-| `10`              | Lock acquisition failed (another backup already running)                                                       |
-| `11`              | Local environment setup failed                                                                                 |
-| `12`              | Remote unreachable or remote environment setup failed                                                          |
-| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                    |
+| Code              | Meaning                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `0`               | Success                                                                                                                            |
+| `1–7`             | A backup job failed: bitmask of bit0 (LSB) = rsync failed, bit1 = rsync produced no log file, bit2 (MSB) = rsync log upload failed |
+| `8`               | Generic error                                                                                                                      |
+| `9`               | Config error (missing or invalid config)                                                                                           |
+| `10`              | Lock acquisition failed (another backup already running)                                                                           |
+| `11`              | Local environment setup failed                                                                                                     |
+| `12`              | Remote unreachable or remote environment setup failed                                                                              |
+| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                                        |
 
 ## Logs
 
