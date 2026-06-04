@@ -3,7 +3,7 @@
 ###################
 # Each backup job is a (job_name, source_directory) pair:
 #
-# job_name     - used in log file names; must only contain letters, digits, hyphens, or underscores
+# job_name     - used in log file names; must be unique and only contain letters, digits, hyphens, or underscores
 # source_dir   - local directory to back up; trailing slash is optional
 #
 # If rsync-filters/default.rsync-filter exists, it is applied to all backup jobs as the base filter.
