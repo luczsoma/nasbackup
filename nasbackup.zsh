@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # nasbackup
-# A macOS tool that backs up local directories to a remote location via rsync over SSH, with optional launchd scheduling.
+# A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional cron or launchd scheduling.
 # https://github.com/luczsoma/nasbackup
 
 typeset -ri \
@@ -467,7 +467,7 @@ __nasbackup_backup_directory_to_nas() {
     )
 
     # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)
-    # non-TTY: discard stdout progress & stats (so it doesn’t pollute launchd logs)
+    # non-TTY: discard stdout progress & stats (so it doesn’t pollute cron/launchd logs)
     local stdout_target
     if (( is_tty )); then
         stdout_target=/dev/stderr
@@ -558,7 +558,7 @@ __nasbackup_logs() {
     __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if [[ -d "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]]; then
-        open "$__NASBACKUP_LOCAL_LOG_DIRECTORY"
+        print "$__NASBACKUP_LOCAL_LOG_DIRECTORY"
     else
         print -u2 "[nasbackup] no logs yet (directory does not exist: $__NASBACKUP_LOCAL_LOG_DIRECTORY)"
     fi

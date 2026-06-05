@@ -1,6 +1,6 @@
 # nasbackup
 
-A macOS tool that backs up local directories to a remote location via rsync over SSH, with optional launchd scheduling.
+A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional cron or launchd scheduling.
 
 ## Prerequisites
 
@@ -37,14 +37,14 @@ nasbackup backup
 nasbackup [backup|logs|status|enable|disable|help]
 ```
 
-| Subcommand         | Description                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `backup` (default) | Run all configured jobs sequentially in the order they are defined in the config                         |
-| `logs`             | Open the local log directory in Finder                                                                   |
-| `status`           | Show whether a backup is running, last run, last success, and launchd agent status (not yet implemented) |
-| `enable`           | Enable the launchd agent (not yet implemented)                                                           |
-| `disable`          | Disable the launchd agent (not yet implemented)                                                          |
-| `help`             | Print usage                                                                                              |
+| Subcommand         | Description                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `backup` (default) | Run all configured jobs sequentially in the order they are defined in the config                              |
+| `logs`             | Print the path of the local log directory (e.g. for `cd $(nasbackup logs)`)                                   |
+| `status`           | Show whether a backup is running, last run, last success, and cron/launchd agent status (not yet implemented) |
+| `enable`           | Enable the cron/launchd agent (not yet implemented)                                                           |
+| `disable`          | Disable the cron/launchd agent (not yet implemented)                                                          |
+| `help`             | Print usage                                                                                                   |
 
 ## Backup runs and jobs
 
@@ -60,16 +60,16 @@ You can control what gets included or excluded from backups with rsync’s versa
 
 ## Exit codes
 
-| Code              | Meaning                                                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `0`               | Success                                                                                                                            |
+| Code              | Meaning                                                                                                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `0`               | Success                                                                                                                          |
 | `1–7`             | Backup job failed: bitmask of bit0 (LSB) = rsync failed, bit1 = rsync produced no log file, bit2 (MSB) = rsync log upload failed |
-| `8`               | Generic error                                                                                                                      |
-| `9`               | Config error (missing or invalid config)                                                                                           |
-| `10`              | Lock acquisition failed (another backup already running)                                                                           |
-| `11`              | Local environment setup failed                                                                                                     |
-| `12`              | Remote unreachable or remote environment setup failed                                                                              |
-| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                                        |
+| `8`               | Generic error                                                                                                                    |
+| `9`               | Config error (missing or invalid config)                                                                                         |
+| `10`              | Lock acquisition failed (another backup already running)                                                                         |
+| `11`              | Local environment setup failed                                                                                                   |
+| `12`              | Remote unreachable or remote environment setup failed                                                                            |
+| `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                                      |
 
 ## Logs
 
