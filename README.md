@@ -48,7 +48,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 ## Backup runs and jobs
 
-Each `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). If a job fails, the run stops and remaining jobs are not executed.
+A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). If a job fails, the run stops and remaining jobs are not executed.
 
 ## Configuration
 
@@ -71,7 +71,7 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 | Code              | Meaning                                                                                                                            |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `0`               | Success                                                                                                                            |
-| `1–7`             | A backup job failed: bitmask of bit0 (LSB) = rsync failed, bit1 = rsync produced no log file, bit2 (MSB) = rsync log upload failed |
+| `1–7`             | Backup job failed: bitmask of bit0 (LSB) = rsync failed, bit1 = rsync produced no log file, bit2 (MSB) = rsync log upload failed |
 | `8`               | Generic error                                                                                                                      |
 | `9`               | Config error (missing or invalid config)                                                                                           |
 | `10`              | Lock acquisition failed (another backup already running)                                                                           |
