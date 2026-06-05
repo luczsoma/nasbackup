@@ -58,14 +58,6 @@ All settings live in `nasbackup.config.zsh` (sourced at runtime). See [nasbackup
 
 You can control what gets included or excluded from backups with rsync’s versatile filtering. See [rsync-filters/README.md](rsync-filters/README.md) for filtering details.
 
-## Healthchecks.io
-
-Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG` in the config to enable monitoring. The script sends:
-
-- a **start** ping at the start of a backup run
-- a **log** ping at the start of each job
-- a **finish** ping (with exit code) at the end of a backup run
-
 ## Exit codes
 
 | Code              | Meaning                                                                                                                            |
@@ -90,3 +82,11 @@ nasbackup-<date>-<run_id>-<job_name>.log
 After a job completes, its log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the remote.
 
 At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` days are deleted (if set), and remote logs older than `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted (if set).
+
+## Monitoring
+
+Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG` in the config to enable monitoring via Healthchecks.io. The script sends:
+
+- a **start** ping at the start of a backup run
+- a **log** ping at the start of each job
+- a **finish** ping (with exit code) at the end of a backup run
