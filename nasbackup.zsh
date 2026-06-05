@@ -396,7 +396,6 @@ __nasbackup_print_status_file() {
     print -u2 "$status_label: ${run_id:-unknown} (pid=${pid:-unknown}) from $started_at to $finished_at with exit_code=${exit_code:-unknown}"
 }
 
-
 __nasbackup_backup_directory_to_nas() {
     if (( $# != 3 )); then
         print -u2 "[nasbackup] ERROR: __nasbackup_backup_directory_to_nas requires 3 arguments"
