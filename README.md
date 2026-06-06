@@ -50,7 +50,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). If a job fails, the run stops and remaining jobs are not executed.
 
-Each job rsyncs its source directory’s contents into `__NASBACKUP_REMOTE_ROOT/<job_name>/` on the remote. For example, a job named `documents` rsyncs the contents of its source directory `~/Documents/` to `<__NASBACKUP_REMOTE_ROOT>/documents/`.
+Each job rsyncs its source directory’s contents into `__NASBACKUP_REMOTE_ROOT/<job_name>/` on the remote. For example, a job named `documents` rsyncs the contents of its source directory to `<__NASBACKUP_REMOTE_ROOT>/documents/`.
 
 ## Configuration
 
