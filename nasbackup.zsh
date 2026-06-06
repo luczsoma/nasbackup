@@ -718,27 +718,30 @@ __nasbackup_backup() {
     local backup_exit_code=0
 
     {
-        trap "return $__NASBACKUP_EXIT_CODE_SIGNAL_HUP" HUP
-        trap "return $__NASBACKUP_EXIT_CODE_SIGNAL_INT" INT
-        trap "return $__NASBACKUP_EXIT_CODE_SIGNAL_QUIT" QUIT
-        trap "return $__NASBACKUP_EXIT_CODE_SIGNAL_TERM" TERM
+        local received_signal=0
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_HUP"  HUP
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_INT"  INT
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_QUIT" QUIT
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_TERM" TERM
 
         local -r run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 
-        __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
+        __nasbackup_ensure_config || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_CONFIG_ERROR ))
 
-        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
+        __nasbackup_acquire_lock || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR ))
 
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
         fi
+        (( received_signal )) && return $received_signal
 
-        __nasbackup_ensure_local_environment || return $__NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR
-        __nasbackup_ensure_remote_environment || return $__NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR
+        __nasbackup_ensure_local_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR ))
+        __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
 
         set -- "${__NASBACKUP_JOBS[@]}"
         while (( $# >= 2 )); do
-            __nasbackup_backup_directory_to_nas "$1" "$2" "$run_id" || return
+            __nasbackup_backup_directory_to_nas "$1" "$2" "$run_id" || return $(( received_signal ? received_signal : $? ))
+            (( received_signal )) && return $received_signal
             shift 2
         done
     } always {
