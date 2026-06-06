@@ -243,6 +243,15 @@ __nasbackup_ensure_config() {
     # validate advanced settings
     [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
 
+    # cross-validate: no job name may resolve to the remote log directory
+    for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
+        local job_name="${__NASBACKUP_JOBS[$i]}"
+        if [[ "$__NASBACKUP_REMOTE_ROOT/$job_name" == "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]]; then
+            print -u2 "[nasbackup] ERROR: config: job_name \"$job_name\" conflicts with __NASBACKUP_REMOTE_LOG_DIRECTORY"
+            return 1
+        fi
+    done
+
     # create variables based on config values
     __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
     __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
