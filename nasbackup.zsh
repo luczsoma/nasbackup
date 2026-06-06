@@ -294,14 +294,18 @@ __nasbackup_ensure_local_environment() {
     }
 
     if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
-        find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
+        local mtime_predicate=""
+        (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"
+        find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' ${=mtime_predicate} -delete > /dev/null 2>&1 \
             || print -u2 "[nasbackup] WARNING: local log cleanup failed"
     fi
 }
 
 __nasbackup_ensure_remote_environment() {
     local -r remote_env_setup="{ test -x ${(q)__NASBACKUP_REMOTE_RSYNC_PATH} && mkdir -p ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY}; } || exit 1"
-    local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' -mtime +${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS} -delete || exit 2"
+    local mtime_predicate=""
+    (( __NASBACKUP_REMOTE_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"
+    local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' ${mtime_predicate} -delete || exit 2"
 
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
         "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
