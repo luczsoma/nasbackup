@@ -150,6 +150,9 @@ __nasbackup_acquire_lock() {
     fi
 
     if $lock_is_stale; then
+        # TOCTOU: two processes can both reach here and both delete+reacquire.
+        # No shell-level atomic primitive covers delete+mkdir together; flock would.
+        # Accepted: the window is microseconds on a script invoked at most a few times a day.
         __nasbackup_delete_lock_unchecked
         if __nasbackup_try_acquire_lock_atomic; then
             # locked successfully after clearing stale lock
