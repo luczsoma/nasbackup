@@ -437,8 +437,22 @@ __nasbackup_cron() {
         return 1
     }
 
+    local existing_crontab
+    existing_crontab="$(crontab -l 2>/dev/null)"
+    local -r crontab_read_exit="$?"
+    if (( crontab_read_exit != 0 )); then
+        local -r crontab_err="$(crontab -l 2>&1 >/dev/null)"
+        if [[ "$crontab_err" != *"no crontab"* ]]; then
+            print -u2 "[nasbackup] ERROR: failed to read current crontab: $crontab_err"
+            return 1
+        fi
+        existing_crontab=""
+    fi
+
     {
-        crontab -l 2> /dev/null | grep -vF "$__NASBACKUP_CRON_MARKER"
+        if [[ -n "$existing_crontab" ]]; then
+            print -r -- "$existing_crontab" | grep -vF "$__NASBACKUP_CRON_MARKER"
+        fi
         if [[ "$1" == "enable" ]]; then
             print -r -- "$__NASBACKUP_SCHEDULE /bin/zsh $__NASBACKUP_SCRIPT_PATH backup $__NASBACKUP_CRON_MARKER"
         fi
