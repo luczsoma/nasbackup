@@ -38,32 +38,6 @@ __nasbackup_get_process_start_epoch_or_empty() {
     fi
 }
 
-__nasbackup_try_acquire_lock_atomic() {
-    # try to acquire lock
-    if mkdir "$__NASBACKUP_LOCK_DIRECTORY" 2> /dev/null; then
-        # write pid and process start time as epoch (for pid reuse detection)
-        local -r start_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
-        if [[ -n "$start_epoch" ]] \
-            && print "$$" > "$__NASBACKUP_LOCK_DIRECTORY/pid" \
-            && print "$start_epoch" > "$__NASBACKUP_LOCK_DIRECTORY/started_at"; then
-            return 0
-        fi
-
-        # could not write pid or start time => delete lock
-        __nasbackup_delete_lock_unchecked
-
-        # could not acquire lock (could not write pid or start time)
-        return 1
-    fi
-
-    # could not acquire lock (already locked)
-    return 1
-}
-
-__nasbackup_delete_lock_unchecked() {
-    rm -rf "$__NASBACKUP_LOCK_DIRECTORY"
-}
-
 __nasbackup_get_lock_pid_or_empty() {
     local pid=""
 
@@ -92,6 +66,28 @@ __nasbackup_get_lock_started_at_or_empty() {
             print "$started_at"
         fi
     fi
+}
+
+__nasbackup_try_acquire_lock_atomic() {
+    # try to acquire lock
+    if mkdir "$__NASBACKUP_LOCK_DIRECTORY" 2> /dev/null; then
+        # write pid and process start time as epoch (for pid reuse detection)
+        local -r start_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
+        if [[ -n "$start_epoch" ]] \
+            && print "$$" > "$__NASBACKUP_LOCK_DIRECTORY/pid" \
+            && print "$start_epoch" > "$__NASBACKUP_LOCK_DIRECTORY/started_at"; then
+            return 0
+        fi
+
+        # could not write pid or start time => delete lock
+        __nasbackup_delete_lock_unchecked
+
+        # could not acquire lock (could not write pid or start time)
+        return 1
+    fi
+
+    # could not acquire lock (already locked)
+    return 1
 }
 
 __nasbackup_acquire_lock() {
@@ -134,6 +130,10 @@ __nasbackup_acquire_lock() {
     print -u2 "[nasbackup] another backup is already in progress"
     # could not acquire lock (already locked)
     return 1
+}
+
+__nasbackup_delete_lock_unchecked() {
+    rm -rf "$__NASBACKUP_LOCK_DIRECTORY"
 }
 
 __nasbackup_release_lock() {
