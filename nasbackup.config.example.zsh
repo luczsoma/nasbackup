@@ -34,10 +34,10 @@ __NASBACKUP_REMOTE_LOG_RETENTION_DAYS=365
 # The path of rsync on the remote (the value of --rsync-path)
 __NASBACKUP_REMOTE_RSYNC_PATH="/bin/rsync"
 
-############################
-# HEALTHCHECKS.IO SETTINGS #
-############################
-# If either one is empty, Healthchecks.io pings will not be sent.
+#######################
+# MONITORING SETTINGS #
+#######################
+# If either one is empty, Healthchecks.io pings will not be sent
 # Your Healthchecks.io project’s Ping Key
 __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY=""
 # Your Healthchecks.io check’s slug
