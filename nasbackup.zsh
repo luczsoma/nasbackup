@@ -13,12 +13,17 @@ typeset -ri \
     __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR=10 \
     __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR=11 \
     __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR=12 \
+    __NASBACKUP_EXIT_CODE_SCHEDULING_ERROR=13 \
     __NASBACKUP_EXIT_CODE_SIGNAL_HUP=129 \
     __NASBACKUP_EXIT_CODE_SIGNAL_INT=130 \
     __NASBACKUP_EXIT_CODE_SIGNAL_QUIT=131 \
     __NASBACKUP_EXIT_CODE_SIGNAL_TERM=143
 
 typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
+
+typeset -r __NASBACKUP_LAUNCHD_LABEL="io.github.luczsoma.nasbackup"
+typeset -r __NASBACKUP_LAUNCHD_PLIST_PATH="$HOME/Library/LaunchAgents/$__NASBACKUP_LAUNCHD_LABEL.plist"
+typeset -r __NASBACKUP_CRON_MARKER="# nasbackup-managed"
 
 __nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
@@ -146,8 +151,9 @@ __nasbackup_release_lock() {
 }
 
 __nasbackup_ensure_config() {
-    # a zsh-improved version of `$(dirname $(realpath $0))`
-    __NASBACKUP_SCRIPT_DIRECTORY="${${(%):-%x}:A:h}"
+    # zsh-improved version of `$(realpath $0)` and `$(dirname $(realpath $0))`
+    __NASBACKUP_SCRIPT_PATH="${${(%):-%x}:A}"
+    __NASBACKUP_SCRIPT_DIRECTORY="${__NASBACKUP_SCRIPT_PATH:h}"
 
     __NASBACKUP_CONFIG_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup.config.zsh"
     if [[ ! -f "$__NASBACKUP_CONFIG_FILE" ]]; then
@@ -210,21 +216,44 @@ __nasbackup_ensure_config() {
     [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
     [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
 
+    # validate scheduling settings
+    [[ -v __NASBACKUP_SCHEDULE ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
+    if [[ -n "$__NASBACKUP_SCHEDULE" ]]; then
+        local -ra schedule_fields=(${(z)__NASBACKUP_SCHEDULE})
+        local -ra schedule_field_names=(minute hour day month weekday)
+        local -ra schedule_field_ranges=(0-59 0-23 1-31 1-12 0-7)
+        if (( ${#schedule_fields} != ${#schedule_field_names} )); then
+            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must have exactly ${#schedule_field_names} fields, got ${#schedule_fields}"
+            return 1
+        fi
+        if (( ${#schedule_field_ranges} != ${#schedule_field_names} )); then
+            print -u2 "[nasbackup] BUG: schedule_field_ranges length (${#schedule_field_ranges}) != schedule_field_names length (${#schedule_field_names})"
+            return 1
+        fi
+        for si in {1..${#schedule_fields}}; do
+            local field="${schedule_fields[$si]}"
+            local glob="<${schedule_field_ranges[$si]}>"
+            if [[ "$field" != '*' && "$field" != ${~glob} ]]; then
+                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE ${schedule_field_names[$si]} field \"$field\" must be '*' or an integer in range ${schedule_field_ranges[$si]}"
+                return 1
+            fi
+        done
+    fi
+
     # validate advanced settings
     [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
 
-    # create non-config variables
+    # create variables based on config values
     __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
     __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
     __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
 }
 
 __nasbackup_ensure_local_environment() {
-    mkdir -p "$__NASBACKUP_LOCAL_LOG_DIRECTORY"
-    if (( $? != 0 )); then
+    mkdir -p "$__NASBACKUP_LOCAL_LOG_DIRECTORY" || {
         print -u2 "[nasbackup] ERROR: failed to create local log directory"
         return 1
-    fi
+    }
 
     if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
         find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' -mtime +"$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" -delete > /dev/null 2>&1 \
@@ -239,7 +268,7 @@ __nasbackup_ensure_remote_environment() {
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
         "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
         2> /dev/null
-    local -r ssh_remote_command_exit_code=$?
+    local -r ssh_remote_command_exit_code="$?"
 
     if (( ssh_remote_command_exit_code == 2 )); then
         print -u2 "[nasbackup] WARNING: remote log cleanup failed"
@@ -295,9 +324,117 @@ __nasbackup_healthchecks_ping() {
         || print -u2 "[nasbackup] WARNING: Healthchecks.io ping failed (signal=$signal, rid=$rid)"
 }
 
+__nasbackup_launchd_enable() {
+    __nasbackup_ensure_local_environment || return 1
+
+    mkdir -p "$HOME/Library/LaunchAgents" 2> /dev/null || {
+        print -u2 "[nasbackup] ERROR: could not create ~/Library/LaunchAgents"
+        return 1
+    }
+
+    {
+        print "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        print "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
+        print "<plist version=\"1.0\">"
+        print "<dict>"
+        print "    <key>Label</key>"
+        print "    <string>$__NASBACKUP_LAUNCHD_LABEL</string>"
+        print "    <key>ProgramArguments</key>"
+        print "    <array>"
+        print "        <string>/bin/zsh</string>"
+        print "        <string>$__NASBACKUP_SCRIPT_PATH</string>"
+        print "        <string>backup</string>"
+        print "    </array>"
+        print "    <key>StartCalendarInterval</key>"
+
+        local -ra schedule_fields=(${(z)__NASBACKUP_SCHEDULE})
+        local -ra schedule_keys=(Minute Hour Day Month Weekday)
+        if (( ${#schedule_keys} != ${#schedule_fields} )); then
+            print -u2 "[nasbackup] BUG: schedule_keys length (${#schedule_keys}) != schedule_fields length (${#schedule_fields})"
+            return 1
+        fi
+
+        print "    <dict>"
+        for si in {1..${#schedule_fields}}; do
+            local field="${schedule_fields[$si]}"
+            if [[ "$field" != '*' ]]; then
+                print "        <key>${schedule_keys[$si]}</key>"
+                print "        <integer>$field</integer>"
+            fi
+        done
+        print "    </dict>"
+        print "    <key>RunAtLoad</key>"
+        print "    <false/>"
+        print "    <key>ProcessType</key>"
+        print "    <string>Background</string>"
+        print "    <key>StandardOutPath</key>"
+        print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.out.log</string>"
+        print "    <key>StandardErrorPath</key>"
+        print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.err.log</string>"
+        print "</dict>"
+        print "</plist>"
+    } > "$__NASBACKUP_LAUNCHD_PLIST_PATH"
+
+    launchctl bootout "gui/$(id -u)/$__NASBACKUP_LAUNCHD_LABEL" 2> /dev/null
+    launchctl bootstrap "gui/$(id -u)" "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null || {
+        rm -f "$__NASBACKUP_LAUNCHD_PLIST_PATH"
+        print -u2 "[nasbackup] ERROR: launchctl bootstrap failed"
+        return 1
+    }
+
+    print -u2 "[nasbackup] scheduled backups enabled (launchd, schedule: $__NASBACKUP_SCHEDULE)"
+}
+
+__nasbackup_launchd_disable() {
+    launchctl bootout "gui/$(id -u)/$__NASBACKUP_LAUNCHD_LABEL" 2> /dev/null
+    rm -f "$__NASBACKUP_LAUNCHD_PLIST_PATH"
+    print -u2 "[nasbackup] scheduled backups disabled (launchd)"
+}
+
+__nasbackup_cron() {
+    if (( $# != 1 )) || [[ "$1" != "enable" && "$1" != "disable" ]]; then
+        print -u2 "[nasbackup] ERROR: __nasbackup_cron requires an argument: enable or disable"
+        return 1
+    fi
+
+    command -v crontab > /dev/null 2>&1 || {
+        print -u2 "[nasbackup] ERROR: crontab not found"
+        return 1
+    }
+
+    {
+        crontab -l 2> /dev/null | grep -vF "$__NASBACKUP_CRON_MARKER"
+        if [[ "$1" == "enable" ]]; then
+            print -r -- "$__NASBACKUP_SCHEDULE /bin/zsh $__NASBACKUP_SCRIPT_PATH backup $__NASBACKUP_CRON_MARKER"
+        fi
+    } | crontab - || {
+        print -u2 "[nasbackup] ERROR: failed to update crontab entry"
+        return 1
+    }
+
+    case "$1" in
+        enable)
+            print -u2 "[nasbackup] scheduled backups enabled (cron, schedule: $__NASBACKUP_SCHEDULE)"
+            ;;
+        disable)
+            print -u2 "[nasbackup] scheduled backups disabled (cron)"
+            ;;
+    esac
+}
+
 __nasbackup_write_status_file() {
     if (( $# != 4 )); then
         print -u2 "[nasbackup] ERROR: __nasbackup_write_status_file requires 4 arguments"
+        return 1
+    fi
+
+    if [[ -z "$__NASBACKUP_LAST_RUN_FILE" ]]; then
+        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
+        return 1
+    fi
+
+    if [[ -z "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
+        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
         return 1
     fi
 
@@ -354,6 +491,16 @@ __nasbackup_get_status_value_or_empty() {
 __nasbackup_print_status_file() {
     if (( $# != 1 )); then
         print -u2 "[nasbackup] ERROR: __nasbackup_print_status_file requires 1 argument"
+        return 1
+    fi
+
+    if [[ -z "$__NASBACKUP_LAST_RUN_FILE" ]]; then
+        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
+        return 1
+    fi
+
+    if [[ -z "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
+        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
         return 1
     fi
 
@@ -497,15 +644,15 @@ __nasbackup_backup_directory_to_nas() {
 
     if (( rsync_exit_code != 0 )); then
         print -u2 "[nasbackup] [$job_name] ERROR: rsync failed (exit code $rsync_exit_code)"
-        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_RSYNC_ERROR ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_ERROR ))
     fi
     if [[ ! -f "$local_rsynclogfile" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: rsync produced no log file"
-        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_NO_RSYNC_LOGFILE_ERROR ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_NO_RSYNC_LOGFILE_ERROR ))
     fi
     if (( log_upload_exit_code != 0 )); then
         print -u2 "[nasbackup] [$job_name] ERROR: log upload failed"
-        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_RSYNC_LOGFILE_UPLOAD_ERROR ))
+        (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_LOGFILE_UPLOAD_ERROR ))
     fi
 
     return "$job_exit_code"
@@ -572,7 +719,6 @@ __nasbackup_logs() {
 }
 
 __nasbackup_status() {
-    # TODO: enabled/disabled
     __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if [[ ! -d "$__NASBACKUP_LOCK_DIRECTORY" ]]; then
@@ -594,17 +740,55 @@ __nasbackup_status() {
     __nasbackup_print_status_file last_run
     __nasbackup_print_status_file last_success
 
+    print -u2 ""
+    if [[ "$OSTYPE" == darwin* ]]; then
+        if [[ -f "$__NASBACKUP_LAUNCHD_PLIST_PATH" ]]; then
+            local installed_schedule
+            local -r ci="$(plutil -extract StartCalendarInterval json -o - "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null)"
+            if [[ -n "$ci" ]]; then
+                installed_schedule="$(print -r -- "$ci" | jq -r '[(.Minute // "*"), (.Hour // "*"), (.Day // "*"), (.Month // "*"), (.Weekday // "*")] | join(" ")')"
+            fi
+            print -u2 "Scheduled backups: enabled (launchd, schedule: ${installed_schedule:-unknown})"
+        else
+            print -u2 "Scheduled backups: disabled"
+        fi
+    else
+        if crontab -l 2> /dev/null | grep -qF "$__NASBACKUP_CRON_MARKER"; then
+            local -r cron_line="$(crontab -l 2> /dev/null | grep -F "$__NASBACKUP_CRON_MARKER" | head -1)"
+            local -a cron_fields=(${(z)cron_line})
+            local installed_schedule="${cron_fields[1]} ${cron_fields[2]} ${cron_fields[3]} ${cron_fields[4]} ${cron_fields[5]}"
+            print -u2 "Scheduled backups: enabled (cron, schedule: $installed_schedule)"
+        else
+            print -u2 "Scheduled backups: disabled"
+        fi
+    fi
+
     return 0
 }
 
 __nasbackup_enable() {
-    print -u2 "[nasbackup] ERROR: enable is not implemented yet"
-    return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
+    __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
+
+    if [[ -z "$__NASBACKUP_SCHEDULE" ]]; then
+        print -u2 "[nasbackup] ERROR: no schedule configured; set __NASBACKUP_SCHEDULE in the config"
+        return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
+    fi
+
+    if [[ "$OSTYPE" == darwin* ]]; then
+        __nasbackup_launchd_enable || return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
+    else
+        __nasbackup_cron enable || return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
+    fi
 }
 
 __nasbackup_disable() {
-    print -u2 "[nasbackup] ERROR: disable is not implemented yet"
-    return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
+    __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
+
+    if [[ "$OSTYPE" == darwin* ]]; then
+        __nasbackup_launchd_disable || return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
+    else
+        __nasbackup_cron disable || return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
+    fi
 }
 
 __nasbackup_help() {

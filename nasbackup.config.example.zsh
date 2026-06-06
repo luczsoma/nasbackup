@@ -43,6 +43,23 @@ __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY=""
 # Your Healthchecks.io check’s slug
 __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG=""
 
+#######################
+# SCHEDULING SETTINGS #
+#######################
+# The schedule on which automatic backups run; required by `nasbackup enable`
+# Format: 5 fields separated by spaces: minute hour day month weekday
+#   Each field must be a single integer (in valid range) or * (any)
+#   Lists, ranges, and steps (e.g. */15, 1-5, 1,3,5) are NOT supported
+#   minute: 0–59 | hour: 0–23 | day: 1–31 | month: 1–12 | weekday: 0–7 (0 and 7 = Sunday)
+# Note: if both day-of-month and day-of-week are set (not *), cron ORs them but launchd ANDs them.
+#   For consistent cross-platform behavior, set at most one of the two.
+# Note: run `nasbackup disable` to disable an already-installed schedule, clearing this value alone does not disable scheduling
+# Examples:
+#   "0 3 * * *"   — every day at 03:00
+#   "0 2 * * 0"   — every Sunday at 02:00
+#   "0 1 1 * *"   — first day of every month at 01:00
+__NASBACKUP_SCHEDULE=""
+
 #####################
 # ADVANCED SETTINGS #
 #####################
