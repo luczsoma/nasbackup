@@ -146,6 +146,7 @@ __nasbackup_release_lock() {
 }
 
 __nasbackup_ensure_config() {
+    # a zsh-improved version of `$(dirname $(realpath $0))`
     __NASBACKUP_SCRIPT_DIRECTORY="${${(%):-%x}:A:h}"
 
     __NASBACKUP_CONFIG_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup.config.zsh"
@@ -155,28 +156,7 @@ __nasbackup_ensure_config() {
     fi
     source "$__NASBACKUP_CONFIG_FILE"
 
-    __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
-    __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
-    __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
-
-    # validate required non-empty strings
-    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY"  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty";  return 1; }
-    [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH"     ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty";     return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_HOST"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty";          return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_ROOT"          ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty";          return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH"    ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty";    return 1; }
-
-    # validate required (but possibly empty) strings
-    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)";  return 1; }
-    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
-
-    # validate required (but possibly empty) non-negative integers
-    { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS     ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";     return 1; }
-    { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS    ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)";    return 1; }
-
-    # validate extra rsync args: must be defined (but may be empty)
-    [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
+    # validate backup settings
 
     # validate jobs: must have an even number of non-empty values
     if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
@@ -213,6 +193,30 @@ __nasbackup_ensure_config() {
         fi
         job_names_seen+=("$job_name")
     done
+
+    # validate local settings
+    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
+    { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"     == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
+
+    # validate remote settings
+    [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_ROOT" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
+    { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"    == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty";    return 1; }
+
+    # validate monitoring settings
+    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY  ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+
+    # validate advanced settings
+    [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
+
+    # create non-config variables
+    __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
+    __NASBACKUP_LAST_SUCCESS_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-success"
+    __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
 }
 
 __nasbackup_ensure_local_environment() {
