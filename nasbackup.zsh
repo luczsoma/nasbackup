@@ -254,6 +254,11 @@ __nasbackup_healthchecks_ping() {
         return 1
     fi
 
+    if [[ -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
+        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping requires __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY and __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG to be set"
+        return 1
+    fi
+
     local -r signal="$1"
     local -r rid="$2"
     local -r body="${3:-}"
@@ -266,10 +271,6 @@ __nasbackup_healthchecks_ping() {
     if (( $# == 3 )) && [[ "$signal" != "log" ]]; then
         print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping: body parameter is only valid for signal=log"
         return 1
-    fi
-
-    if [[ -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
-        return 0
     fi
 
     local -a curl_args=(
@@ -417,7 +418,9 @@ __nasbackup_backup_directory_to_nas() {
         print -u2 "========================================================================"
     fi
 
-    __nasbackup_healthchecks_ping "log" "$run_id" "$log_banner"
+    if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
+        __nasbackup_healthchecks_ping "log" "$run_id" "$log_banner"
+    fi
 
     if [[ ! -d "$source_dir" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: source is not a directory: $source_dir"
