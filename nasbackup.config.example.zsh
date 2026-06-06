@@ -25,7 +25,7 @@ __NASBACKUP_LOCAL_RSYNC_PATH="rsync"
 ###################
 # The remote host as it is configured for SSH (usually in ~/.ssh/config)
 __NASBACKUP_REMOTE_HOST="nas"
-# The root directory on the remote into which the backup jobs’ source directories will be backed up
+# The root directory on the remote under which each job is backed up to its own <job_name> subdirectory
 __NASBACKUP_REMOTE_ROOT="/nasbackup"
 # The directory on the remote host into which log files are copied
 __NASBACKUP_REMOTE_LOG_DIRECTORY="$__NASBACKUP_REMOTE_ROOT/_logs"

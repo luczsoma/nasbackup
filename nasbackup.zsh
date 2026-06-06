@@ -629,7 +629,7 @@ __nasbackup_backup_directory_to_nas() {
         stdout_target=/dev/null
     fi
 
-    "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT" \
+    "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
         > $stdout_target
     local -r rsync_exit_code="$?"
 
