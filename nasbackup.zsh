@@ -686,8 +686,16 @@ __nasbackup_backup_directory_to_nas() {
     fi
 
     "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
-        > $stdout_target
+        > $stdout_target &
+    local -r rsync_pid=$!
+    wait $rsync_pid
     local -r rsync_exit_code="$?"
+    # received_signal is set by the traps in __nasbackup_backup; if it fired during wait,
+    # rsync is still alive (wait returned early) -> forward the signal so it actually stops
+    if (( received_signal )); then
+        kill -$(( received_signal - 128 )) $rsync_pid 2> /dev/null
+        wait $rsync_pid 2> /dev/null
+    fi
 
     "$__NASBACKUP_LOCAL_RSYNC_PATH" \
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
@@ -698,15 +706,15 @@ __nasbackup_backup_directory_to_nas() {
 
     local job_exit_code=0
 
-    if (( rsync_exit_code != 0 )); then
+    if (( rsync_exit_code != 0 && !received_signal )); then
         print -u2 "[nasbackup] [$job_name] ERROR: rsync failed (exit code $rsync_exit_code)"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_ERROR ))
     fi
-    if [[ ! -f "$local_rsynclogfile" ]]; then
+    if [[ ! -f "$local_rsynclogfile" ]] && (( !received_signal )); then
         print -u2 "[nasbackup] [$job_name] ERROR: rsync produced no log file"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_NO_RSYNC_LOGFILE_ERROR ))
     fi
-    if (( log_upload_exit_code != 0 )); then
+    if (( log_upload_exit_code != 0 && !received_signal )); then
         print -u2 "[nasbackup] [$job_name] ERROR: log upload failed"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_LOGFILE_UPLOAD_ERROR ))
     fi
