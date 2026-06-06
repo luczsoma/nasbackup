@@ -25,6 +25,13 @@ typeset -r __NASBACKUP_LAUNCHD_LABEL="io.github.luczsoma.nasbackup"
 typeset -r __NASBACKUP_LAUNCHD_PLIST_PATH="$HOME/Library/LaunchAgents/$__NASBACKUP_LAUNCHD_LABEL.plist"
 typeset -r __NASBACKUP_CRON_MARKER="# nasbackup-managed"
 
+# Detect date implementation at load time: GNU coreutils (Linux) vs BSD date (macOS)
+if date --version > /dev/null 2>&1; then
+    typeset -ri __NASBACKUP_DATE_IS_GNU=1
+else
+    typeset -ri __NASBACKUP_DATE_IS_GNU=0
+fi
+
 __nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
         print -u2 "[nasbackup] ERROR: __nasbackup_get_process_start_epoch_or_empty requires 1 argument"
@@ -37,9 +44,28 @@ __nasbackup_get_process_start_epoch_or_empty() {
         return 0
     fi
 
-    local -r epoch="$(LC_ALL=C date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null)"
+    local epoch
+    if (( __NASBACKUP_DATE_IS_GNU )); then
+        epoch="$(date -d "$raw" +%s 2> /dev/null)"
+    else
+        epoch="$(LC_ALL=C date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null)"
+    fi
     if [[ "$epoch" == <-> ]]; then
         print "$epoch"
+    fi
+}
+
+__nasbackup_format_epoch() {
+    if (( $# != 2 )); then
+        print -u2 "[nasbackup] ERROR: __nasbackup_format_epoch requires 2 arguments"
+        return 1
+    fi
+    local -r epoch="$1"
+    local -r fmt="$2"
+    if (( __NASBACKUP_DATE_IS_GNU )); then
+        date -d "@$epoch" "$fmt" 2> /dev/null
+    else
+        date -r "$epoch" "$fmt" 2> /dev/null
     fi
 }
 
@@ -543,13 +569,13 @@ __nasbackup_print_status_file() {
     local started_at="unknown"
     local -r started_at_epoch="$(__nasbackup_get_status_value_or_empty "$status_file" started_at)"
     if [[ "$started_at_epoch" == <-> ]]; then
-        started_at="$(date -r "$started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
+        started_at="$(__nasbackup_format_epoch "$started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
     fi
 
     local finished_at="unknown"
     local -r finished_at_epoch="$(__nasbackup_get_status_value_or_empty "$status_file" finished_at)"
     if [[ "$finished_at_epoch" == <-> ]]; then
-        finished_at="$(date -r "$finished_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
+        finished_at="$(__nasbackup_format_epoch "$finished_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
     fi
 
     local -r exit_code="$(__nasbackup_get_status_value_or_empty "$status_file" exit_code)"
@@ -592,7 +618,7 @@ __nasbackup_backup_directory_to_nas() {
         print -u2 "[nasbackup] [$job_name] ERROR: could not determine process start time"
         return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
-    local -r started_at_formatted="$(date -r "$started_at_epoch" "+%Y%m%d-%H%M%S" 2> /dev/null)"
+    local -r started_at_formatted="$(__nasbackup_format_epoch "$started_at_epoch" "+%Y%m%d-%H%M%S")"
     if [[ -z "$started_at_formatted" ]]; then
         print -u2 "[nasbackup] [$job_name] ERROR: could not format process start time"
         return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
@@ -739,7 +765,7 @@ __nasbackup_status() {
         print -u2 "PID: ${lock_pid:-unknown}"
 
         local -r lock_started_at_epoch="$(__nasbackup_get_lock_started_at_or_empty)"
-        local -r lock_started_at="${lock_started_at_epoch:+$(date -r "$lock_started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")}"
+        local -r lock_started_at="${lock_started_at_epoch:+$(__nasbackup_format_epoch "$lock_started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")}"
         print -u2 "Started at: ${lock_started_at:-unknown}"
 
         print -u2 "See logs: \`nasbackup logs\`"
