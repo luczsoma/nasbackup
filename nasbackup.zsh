@@ -37,7 +37,7 @@ __nasbackup_get_process_start_epoch_or_empty() {
         return 0
     fi
 
-    local -r epoch="$(date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null)"
+    local -r epoch="$(LC_ALL=C date -j -f '%a %b %d %H:%M:%S %Y' "$raw" +%s 2> /dev/null)"
     if [[ "$epoch" == <-> ]]; then
         print "$epoch"
     fi
