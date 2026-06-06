@@ -720,11 +720,11 @@ __nasbackup_backup() {
 
         __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
+        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
+
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
         fi
-
-        __nasbackup_acquire_lock || return $__NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR
 
         __nasbackup_ensure_local_environment || return $__NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR
         __nasbackup_ensure_remote_environment || return $__NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR
