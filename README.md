@@ -1,6 +1,6 @@
 # nasbackup
 
-A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional cron or launchd scheduling.
+A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional launchd or cron scheduling.
 
 ## Prerequisites
 
@@ -48,9 +48,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 ## Backup runs and jobs
 
-A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). If a job fails, the run stops and remaining jobs are not executed.
-
-Each job rsyncs its source directory’s contents into `__NASBACKUP_REMOTE_ROOT/<job_name>/` on the remote. For example, a job named `documents` rsyncs the contents of its source directory to `<__NASBACKUP_REMOTE_ROOT>/documents/`.
+A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). Each job rsyncs `<source_directory>/*` into `__NASBACKUP_REMOTE_ROOT/<job_name>/` on the remote. If a job fails, the run stops and remaining jobs are not executed.
 
 ## Configuration
 
@@ -71,7 +69,7 @@ You can control what gets included or excluded from backups with rsync’s versa
 | `10`              | Lock acquisition failed (another backup already running)                                                                         |
 | `11`              | Local environment setup failed                                                                                                   |
 | `12`              | Remote unreachable or remote environment setup failed                                                                            |
-| `13`              | Scheduling error (`enable` / `disable` failed)                                                                                   |
+| `13`              | Scheduling error (`enable` or `disable` failed)                                                                                  |
 | `129/130/131/143` | Killed by HUP/INT/QUIT/TERM                                                                                                      |
 
 ## Logs
@@ -96,40 +94,67 @@ Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHC
 
 ## Scheduling
 
-Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to install and activate automatic backups. On macOS a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`); on other platforms a user crontab entry is added. Scheduling can be disabled with `nasbackup disable`, which entirely removes the launchd agent or user crontab entry. The `enable` subcommand is idempotent; re-running it replaces any previously installed schedule with the current config.
+Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to install and activate automatic backups. On macOS a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`), on other platforms a user crontab entry is added. Run `nasbackup disable` to disable scheduling and remove the installed schedule entirely. The `enable` subcommand is idempotent: re-running it replaces any previously installed schedule with the current one in the config.
 
-`__NASBACKUP_SCHEDULE` is a 5-field cron-style string:
+The format is `launchd=<expression>` or `cron=<expression>`, and must match the platform:
+
+- **macOS:** use `launchd=<expression>` (`cron=` is a config error on macOS)
+- **Other platforms:** use `cron=<expression>` (`launchd=` is a config error on non-macOS)
+
+### `launchd=<expression>`
+
+One or more `StartCalendarInterval` entries separated by `;`. Each entry is 5 comma-separated fields:
 
 ```
-minute hour day month weekday
+Minute,Hour,Day,Weekday,Month
 ```
 
-Each field must be a single integer in valid range or `*` (any). Lists, ranges, and steps (`*/15`, `1-5`, `1,3,5`) are not supported.
+| Field     | Range | Notes            |
+| --------- | ----- | ---------------- |
+| `Minute`  | 0–59  |                  |
+| `Hour`    | 0–23  |                  |
+| `Day`     | 1–31  |                  |
+| `Weekday` | 0–7   | 0 and 7 = Sunday |
+| `Month`   | 1–12  |                  |
 
-| Field   | Range | Notes            |
-| ------- | ----- | ---------------- |
-| minute  | 0–59  |                  |
-| hour    | 0–23  |                  |
-| day     | 1–31  |                  |
-| month   | 1–12  |                  |
-| weekday | 0–7   | 0 and 7 = Sunday |
-
-**Examples:**
+A blank field is a wildcard (the key is omitted from `StartCalendarInterval`). Multiple entries allow schedules that cron would express with a list, interval, or step (e.g. running at :00, :15, :30, :45 each hour).
 
 ```zsh
-__NASBACKUP_SCHEDULE="0 3 * * *"   # every day at 03:00
-__NASBACKUP_SCHEDULE="0 2 * * 0"   # every Sunday at 02:00
-__NASBACKUP_SCHEDULE="0 1 1 * *"   # first day of every month at 01:00
+# every day at 03:00 (Minute=0, Hour=3)
+__NASBACKUP_SCHEDULE="launchd=0,3,,,"
+# every Sunday at 02:00 (Minute=0, Hour=2, Weekday=0)
+__NASBACKUP_SCHEDULE="launchd=0,2,,0,"
+# first day of every month at 01:00 (Minute=0, Hour=1, Day=1)
+__NASBACKUP_SCHEDULE="launchd=0,1,1,,"
+# every minute of 03:xx every day (Hour=3, Minute wildcard)
+__NASBACKUP_SCHEDULE="launchd=,3,,,"
+# every day at 03:00 and 15:00 (two entries)
+__NASBACKUP_SCHEDULE="launchd=0,3,,,;0,15,,,"
+# 4 times an hour at :00, :15, :30, :45 (four entries)
+__NASBACKUP_SCHEDULE="launchd=0,,,,;15,,,,;30,,,,;45,,,,"
+# 12 times a day every 2 hours at :00 of each even hour (twelve entries)
+__NASBACKUP_SCHEDULE="launchd=0,0,,,;0,2,,,;0,4,,,;0,6,,,;0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,;0,20,,,;0,22,,,"
 ```
 
-**DoM + DoW caveat:** if both day-of-month and day-of-week are set (not `*`), cron ORs them while launchd ANDs them. For consistent behavior across platforms, set at most one of the two.
+### `cron=<expression>`
+
+A standard cron expression written verbatim to the user crontab. The supported syntax depends on the platform’s cron implementation.
+
+```zsh
+# every day at 03:00
+__NASBACKUP_SCHEDULE="cron=0 3 * * *"
+# every Sunday at 02:00
+__NASBACKUP_SCHEDULE="cron=0 2 * * 0"
+# first day of every month at 01:00
+__NASBACKUP_SCHEDULE="cron=0 1 1 * *"
+```
 
 ### Scheduled-context caveats
 
 When a backup runs via launchd or cron, the process has a minimal environment (no interactive shell, restricted PATH, no SSH agent loaded). If your SSH key has a passphrase, authentication will likely fail. Use one of:
 
 - A passphraseless SSH key dedicated to backup.
-- A key stored in the macOS keychain (`ssh-add --apple-use-keychain`). On macOS, launchd agents run inside the user GUI session, so Keychain access is available.
+- A key stored in the macOS keychain (`ssh-add --apple-use-keychain`). On macOS, the nasbackup launchd agent runs inside the user GUI session, so Keychain access is available.
 
 To inspect the launchd agent state or see its last exit code:
 

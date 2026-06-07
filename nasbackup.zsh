@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # nasbackup
-# A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional cron or launchd scheduling.
+# A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional launchd or cron scheduling.
 # https://github.com/luczsoma/nasbackup
 
 typeset -ri \
@@ -248,25 +248,70 @@ __nasbackup_ensure_config() {
     # validate scheduling settings
     [[ -v __NASBACKUP_SCHEDULE ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
     if [[ -n "$__NASBACKUP_SCHEDULE" ]]; then
-        local -ra schedule_fields=(${(z)__NASBACKUP_SCHEDULE})
-        local -ra schedule_field_names=(minute hour day month weekday)
-        local -ra schedule_field_ranges=(0-59 0-23 1-31 1-12 0-7)
-        if (( ${#schedule_fields} != ${#schedule_field_names} )); then
-            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must have exactly ${#schedule_field_names} fields, got ${#schedule_fields}"
+        if [[ "${__NASBACKUP_SCHEDULE//[^=]/}" != "=" ]]; then
+            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be in the format \"launchd=<expression>\" or \"cron=<expression>\""
             return 1
         fi
-        if (( ${#schedule_field_ranges} != ${#schedule_field_names} )); then
-            print -u2 "[nasbackup] BUG: schedule_field_ranges length (${#schedule_field_ranges}) != schedule_field_names length (${#schedule_field_names})"
-            return 1
-        fi
-        for si in {1..${#schedule_fields}}; do
-            local field="${schedule_fields[$si]}"
-            local glob="<${schedule_field_ranges[$si]}>"
-            if [[ "$field" != '*' && "$field" != ${~glob} ]]; then
-                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE ${schedule_field_names[$si]} field \"$field\" must be '*' or an integer in range ${schedule_field_ranges[$si]}"
+        local -r schedule_type="${__NASBACKUP_SCHEDULE%=*}"
+        local -r schedule_value="${__NASBACKUP_SCHEDULE#*=}"
+        case "$schedule_type" in
+            launchd)
+                if [[ "$OSTYPE" != darwin* ]]; then
+                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"launchd\" is only supported on macOS; use \"cron=...\" instead"
+                    return 1
+                fi
+                if [[ -z "$schedule_value" ]]; then
+                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not be empty"
+                    return 1
+                fi
+                local -ra launchd_entries=("${(@s:;:)schedule_value}")
+                if (( ${#launchd_entries} == 0 )); then
+                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must have at least one entry"
+                    return 1
+                fi
+                local -ra launchd_key_names=(Minute Hour Day Weekday Month)
+                local -ra launchd_field_ranges=("0-59" "0-23" "1-31" "0-7" "1-12")
+                local launchd_entry launchd_comma_count
+                local -a launchd_fields
+                local lfi launchd_field launchd_range_glob
+                for launchd_entry in "${launchd_entries[@]}"; do
+                    if [[ -z "$launchd_entry" ]]; then
+                        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not contain empty entries (check for leading, trailing, or consecutive semicolons)"
+                        return 1
+                    fi
+                    launchd_comma_count="${launchd_entry//[^,]/}"
+                    if (( ${#launchd_comma_count} != 4 )); then
+                        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" must have exactly 5 comma-separated fields (Minute,Hour,Day,Weekday,Month)"
+                        return 1
+                    fi
+                    launchd_fields=("${(@s:,:)launchd_entry}")
+                    for lfi in {1..5}; do
+                        launchd_field="${launchd_fields[$lfi]}"
+                        if [[ -n "$launchd_field" ]]; then
+                            launchd_range_glob="<${launchd_field_ranges[$lfi]}>"
+                            if [[ "$launchd_field" != ${~launchd_range_glob} ]]; then
+                                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" ${launchd_key_names[$lfi]} field \"$launchd_field\" must be empty (wildcard) or an integer in range ${launchd_field_ranges[$lfi]}"
+                                return 1
+                            fi
+                        fi
+                    done
+                done
+                ;;
+            cron)
+                if [[ "$OSTYPE" == darwin* ]]; then
+                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"cron\" is not supported on macOS; use \"launchd=...\" instead"
+                    return 1
+                fi
+                if [[ -z "$schedule_value" ]]; then
+                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE cron expression must not be empty"
+                    return 1
+                fi
+                ;;
+            *)
+                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"$schedule_type\" is not supported; must be \"launchd\" or \"cron\""
                 return 1
-            fi
-        done
+                ;;
+        esac
     fi
 
     # validate advanced settings
@@ -389,22 +434,37 @@ __nasbackup_launchd_enable() {
         print "    </array>"
         print "    <key>StartCalendarInterval</key>"
 
-        local -ra schedule_fields=(${(z)__NASBACKUP_SCHEDULE})
-        local -ra schedule_keys=(Minute Hour Day Month Weekday)
-        if (( ${#schedule_keys} != ${#schedule_fields} )); then
-            print -u2 "[nasbackup] BUG: schedule_keys length (${#schedule_keys}) != schedule_fields length (${#schedule_fields})"
-            return 1
-        fi
+        local -r schedule_value="${__NASBACKUP_SCHEDULE#launchd=}"
+        local -ra launchd_entries=("${(@s:;:)schedule_value}")
+        local pfi
+        local -ra launchd_key_names=(Minute Hour Day Weekday Month)
 
-        print "    <dict>"
-        for si in {1..${#schedule_fields}}; do
-            local field="${schedule_fields[$si]}"
-            if [[ "$field" != '*' ]]; then
-                print "        <key>${schedule_keys[$si]}</key>"
-                print "        <integer>$field</integer>"
-            fi
-        done
-        print "    </dict>"
+        if (( ${#launchd_entries} == 1 )); then
+            print "    <dict>"
+            local -a launchd_fields=("${(@s:,:)launchd_entries[1]}")
+            for pfi in {1..5}; do
+                if [[ -n "${launchd_fields[$pfi]}" ]]; then
+                    print "        <key>${launchd_key_names[$pfi]}</key>"
+                    print "        <integer>${launchd_fields[$pfi]}</integer>"
+                fi
+            done
+            print "    </dict>"
+        else
+            print "    <array>"
+            local launchd_entry
+            for launchd_entry in "${launchd_entries[@]}"; do
+                print "        <dict>"
+                local -a plist_fields=("${(@s:,:)launchd_entry}")
+                for pfi in {1..5}; do
+                    if [[ -n "${plist_fields[$pfi]}" ]]; then
+                        print "            <key>${launchd_key_names[$pfi]}</key>"
+                        print "            <integer>${plist_fields[$pfi]}</integer>"
+                    fi
+                done
+                print "        </dict>"
+            done
+            print "    </array>"
+        fi
         print "    <key>RunAtLoad</key>"
         print "    <false/>"
         print "    <key>ProcessType</key>"
@@ -413,6 +473,8 @@ __nasbackup_launchd_enable() {
         print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.out.log</string>"
         print "    <key>StandardErrorPath</key>"
         print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.err.log</string>"
+        print "    <key>NasbackupSchedule</key>"
+        print "    <string>${__NASBACKUP_SCHEDULE#launchd=}</string>"
         print "</dict>"
         print "</plist>"
     } > "$__NASBACKUP_LAUNCHD_PLIST_PATH"
@@ -424,7 +486,7 @@ __nasbackup_launchd_enable() {
         return 1
     }
 
-    print -u2 "[nasbackup] scheduled backups enabled (launchd, schedule: $__NASBACKUP_SCHEDULE)"
+    print -u2 "[nasbackup] scheduled backups enabled (launchd, schedule: ${__NASBACKUP_SCHEDULE#launchd=})"
 }
 
 __nasbackup_launchd_disable() {
@@ -434,8 +496,8 @@ __nasbackup_launchd_disable() {
 }
 
 __nasbackup_cron() {
-    if (( $# != 1 )) || [[ "$1" != "enable" && "$1" != "disable" ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_cron requires an argument: enable or disable"
+    if (( $# != 1 )) || [[ "$1" != "enable" && "$1" != "disable" && "$1" != "status" ]]; then
+        print -u2 "[nasbackup] ERROR: __nasbackup_cron requires an argument: enable|disable|status"
         return 1
     fi
 
@@ -445,10 +507,10 @@ __nasbackup_cron() {
     }
 
     local existing_crontab
-    existing_crontab="$(crontab -l 2>/dev/null)"
+    existing_crontab="$(crontab -l 2> /dev/null)"
     local -r crontab_read_exit="$?"
     if (( crontab_read_exit != 0 )); then
-        local -r crontab_err="$(crontab -l 2>&1 >/dev/null)"
+        local -r crontab_err="$(crontab -l 2>&1 > /dev/null)"
         if [[ "$crontab_err" != *"no crontab"* ]]; then
             print -u2 "[nasbackup] ERROR: failed to read current crontab: $crontab_err"
             return 1
@@ -456,12 +518,20 @@ __nasbackup_cron() {
         existing_crontab=""
     fi
 
+    if [[ "$1" == "status" ]]; then
+        if [[ -n "$existing_crontab" ]]; then
+            local -r cron_line="$(print -r -- "$existing_crontab" | grep -F "$__NASBACKUP_CRON_MARKER" | head -1)"
+            print "${cron_line%% /bin/zsh *}"
+        fi
+        return 0
+    fi
+
     {
         if [[ -n "$existing_crontab" ]]; then
             print -r -- "$existing_crontab" | grep -vF "$__NASBACKUP_CRON_MARKER"
         fi
         if [[ "$1" == "enable" ]]; then
-            print -r -- "$__NASBACKUP_SCHEDULE /bin/zsh $__NASBACKUP_SCRIPT_PATH backup $__NASBACKUP_CRON_MARKER"
+            print -r -- "${__NASBACKUP_SCHEDULE#cron=} /bin/zsh $__NASBACKUP_SCRIPT_PATH backup $__NASBACKUP_CRON_MARKER"
         fi
     } | crontab - || {
         print -u2 "[nasbackup] ERROR: failed to update crontab entry"
@@ -470,10 +540,14 @@ __nasbackup_cron() {
 
     case "$1" in
         enable)
-            print -u2 "[nasbackup] scheduled backups enabled (cron, schedule: $__NASBACKUP_SCHEDULE)"
+            print -u2 "[nasbackup] scheduled backups enabled (cron, schedule: ${__NASBACKUP_SCHEDULE#cron=})"
             ;;
         disable)
             print -u2 "[nasbackup] scheduled backups disabled (cron)"
+            ;;
+        *)
+            print -u2 "[nasbackup] ERROR: invalid execution path in __nasbackup_cron"
+            return 1
             ;;
     esac
 }
@@ -677,7 +751,7 @@ __nasbackup_backup_directory_to_nas() {
     )
 
     # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)
-    # non-TTY: discard stdout progress & stats (so it doesn’t pollute cron/launchd logs)
+    # non-TTY: discard stdout progress & stats (so it doesn’t pollute launchd/cron logs)
     local stdout_target
     if (( is_tty )); then
         stdout_target=/dev/stderr
@@ -810,22 +884,17 @@ __nasbackup_status() {
     __nasbackup_print_status_file last_success
 
     print -u2 ""
+    local installed_schedule
     if [[ "$OSTYPE" == darwin* ]]; then
         if [[ -f "$__NASBACKUP_LAUNCHD_PLIST_PATH" ]]; then
-            local installed_schedule
-            local -r ci="$(plutil -extract StartCalendarInterval json -o - "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null)"
-            if [[ -n "$ci" ]]; then
-                installed_schedule="$(print -r -- "$ci" | jq -r '[(.Minute // "*"), (.Hour // "*"), (.Day // "*"), (.Month // "*"), (.Weekday // "*")] | join(" ")')"
-            fi
+            installed_schedule="$(plutil -extract NasbackupSchedule raw -o - "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null)"
             print -u2 "Scheduled backups: enabled (launchd, schedule: ${installed_schedule:-unknown})"
         else
             print -u2 "Scheduled backups: disabled"
         fi
     else
-        if crontab -l 2> /dev/null | grep -qF "$__NASBACKUP_CRON_MARKER"; then
-            local -r cron_line="$(crontab -l 2> /dev/null | grep -F "$__NASBACKUP_CRON_MARKER" | head -1)"
-            local -a cron_fields=(${(z)cron_line})
-            local installed_schedule="${cron_fields[1]} ${cron_fields[2]} ${cron_fields[3]} ${cron_fields[4]} ${cron_fields[5]}"
+        installed_schedule="$(__nasbackup_cron status)"
+        if [[ -n "$installed_schedule" ]]; then
             print -u2 "Scheduled backups: enabled (cron, schedule: $installed_schedule)"
         else
             print -u2 "Scheduled backups: disabled"

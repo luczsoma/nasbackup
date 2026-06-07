@@ -47,17 +47,40 @@ __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG=""
 # SCHEDULING SETTINGS #
 #######################
 # The schedule on which automatic backups run; required by `nasbackup enable`
-# Format: 5 fields separated by spaces: minute hour day month weekday
-#   Each field must be a single integer (in valid range) or * (any)
-#   Lists, ranges, and steps (e.g. */15, 1-5, 1,3,5) are NOT supported
-#   minute: 0–59 | hour: 0–23 | day: 1–31 | month: 1–12 | weekday: 0–7 (0 and 7 = Sunday)
-# Note: if both day-of-month and day-of-week are set (not *), cron ORs them but launchd ANDs them.
-#   For consistent cross-platform behavior, set at most one of the two.
-# Note: run `nasbackup disable` to disable an already-installed schedule, clearing this value alone does not disable scheduling
-# Examples:
-#   "0 3 * * *"   — every day at 03:00
-#   "0 2 * * 0"   — every Sunday at 02:00
-#   "0 1 1 * *"   — first day of every month at 01:00
+# Format: "launchd=<launchd_exp>" or "cron=<cron_exp>"
+#
+# launchd=<launchd_exp>
+#   One or more StartCalendarInterval entries, separated by ";". Only supported on macOS.
+#   Each entry has 5 comma-separated fields: Minute,Hour,Day,Weekday,Month
+#     Minute: 0–59 | Hour: 0–23 | Day: 1–31 | Weekday: 0–7 (0 and 7 = Sunday) | Month: 1–12
+#   A blank field is a wildcard (the key is omitted from StartCalendarInterval).
+#   Examples:
+#     - every day at 03:00 (Minute=0, Hour=3)
+#       "launchd=0,3,,,"
+#     - every Sunday at 02:00 (Minute=0, Hour=2, Weekday=0)
+#       "launchd=0,2,,0,"
+#     - first day of every month at 01:00 (Minute=0, Hour=1, Day=1)
+#       "launchd=0,1,1,,"
+#     - every minute of 03:xx every day (Hour=3, Minute wildcard)
+#       "launchd=,3,,,"
+#     - every day at 03:00 and 15:00 (two entries)
+#       "launchd=0,3,,,;0,15,,,"
+#     - 4 times an hour at :00, :15, :30, :45 (four entries)
+#       "launchd=0,,,,;15,,,,;30,,,,;45,,,,"
+#     - 12 times a day every 2 hours at :00 of each even hour (twelve entries)
+#       "launchd=0,0,,,;0,2,,,;0,4,,,;0,6,,,;0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,;0,20,,,;0,22,,,"
+#
+# cron=<cron_exp>
+#   A standard cron expression written verbatim into crontab. Only supported on non-macOS.
+#   Examples:
+#     - every day at 03:00
+#       "cron=0 3 * * *"
+#     - every Sunday at 02:00
+#       "cron=0 2 * * 0"
+#     - first day of every month at 01:00
+#       "cron=0 1 1 * *"
+#
+# Note: run `nasbackup disable` to disable an already-installed schedule; clearing this value alone does not disable scheduling
 __NASBACKUP_SCHEDULE=""
 
 #####################
