@@ -411,6 +411,14 @@ __nasbackup_healthchecks_ping() {
         || print -u2 "[nasbackup] WARNING: Healthchecks.io ping failed (signal=$signal, rid=$rid)"
 }
 
+__nasbackup_xml_escape() {
+    local s="$1"
+    s="${s//&/&amp;}"
+    s="${s//</&lt;}"
+    s="${s//>/&gt;}"
+    print -r -- "$s"
+}
+
 __nasbackup_launchd_enable() {
     __nasbackup_ensure_local_environment || return 1
 
@@ -418,6 +426,9 @@ __nasbackup_launchd_enable() {
         print -u2 "[nasbackup] ERROR: could not create ~/Library/LaunchAgents"
         return 1
     }
+
+    local -r xml_script_path="$(__nasbackup_xml_escape "$__NASBACKUP_SCRIPT_PATH")"
+    local -r xml_log_dir="$(__nasbackup_xml_escape "$__NASBACKUP_LOCAL_LOG_DIRECTORY")"
 
     {
         print "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -429,7 +440,7 @@ __nasbackup_launchd_enable() {
         print "    <key>ProgramArguments</key>"
         print "    <array>"
         print "        <string>/bin/zsh</string>"
-        print "        <string>$__NASBACKUP_SCRIPT_PATH</string>"
+        print "        <string>$xml_script_path</string>"
         print "        <string>backup</string>"
         print "    </array>"
         print "    <key>StartCalendarInterval</key>"
@@ -470,9 +481,9 @@ __nasbackup_launchd_enable() {
         print "    <key>ProcessType</key>"
         print "    <string>Background</string>"
         print "    <key>StandardOutPath</key>"
-        print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.out.log</string>"
+        print "    <string>$xml_log_dir/launchd.out.log</string>"
         print "    <key>StandardErrorPath</key>"
-        print "    <string>$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.err.log</string>"
+        print "    <string>$xml_log_dir/launchd.err.log</string>"
         print "    <key>NasbackupSchedule</key>"
         print "    <string>${__NASBACKUP_SCHEDULE#launchd=}</string>"
         print "</dict>"
