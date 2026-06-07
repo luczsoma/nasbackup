@@ -352,10 +352,24 @@ __nasbackup_ensure_remote_environment() {
     (( __NASBACKUP_REMOTE_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"
     local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' ${mtime_predicate} -delete || exit 2"
 
-    ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
-        "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
-        2> /dev/null
-    local -r ssh_remote_command_exit_code="$?"
+    local ssh_remote_command_exit_code
+    local attempt
+    local -r total_attempts=5
+    local sleep_for
+    for attempt in {1..$total_attempts}; do
+        ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \
+            "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
+            2> /dev/null
+        ssh_remote_command_exit_code="$?"
+        if (( ssh_remote_command_exit_code != 255 )); then
+            break
+        fi
+        if (( attempt < total_attempts )); then
+            sleep_for=$(( attempt * 2 ))
+            print -u2 "[nasbackup] WARNING: SSH connection failed (attempt $attempt/$total_attempts, exit code 255), retrying in ${sleep_for}s..."
+            sleep $sleep_for
+        fi
+    done
 
     if (( ssh_remote_command_exit_code == 2 )); then
         print -u2 "[nasbackup] WARNING: remote log cleanup failed"
