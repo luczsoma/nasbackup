@@ -363,7 +363,7 @@ __nasbackup_ensure_remote_environment() {
     fi
 
     if (( ssh_remote_command_exit_code != 0 )); then
-        print -u2 "[nasbackup] ERROR: NAS ($__NASBACKUP_REMOTE_HOST) is not reachable, rsync not found at $__NASBACKUP_REMOTE_RSYNC_PATH, or remote log directory creation failed"
+        print -u2 "[nasbackup] ERROR: remote ($__NASBACKUP_REMOTE_HOST) is not reachable, rsync not found at $__NASBACKUP_REMOTE_RSYNC_PATH, or remote log directory creation failed"
         return 1
     fi
 }
