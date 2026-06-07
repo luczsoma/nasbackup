@@ -161,7 +161,7 @@ __nasbackup_acquire_lock() {
     fi
 
     # lock is not stale
-    print -u2 "[nasbackup] another backup is already in progress"
+    print -u2 "[nasbackup] ERROR: another backup is already in progress"
     # could not acquire lock (already locked)
     return 1
 }
@@ -807,18 +807,22 @@ __nasbackup_backup() {
         trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_TERM" TERM
 
         local -r run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+        local healthchecks_start_ping_sent=false
 
+        # Setup is decoupled from Healthchecks.io monitoring: pre-flight failures (no network, missing remote rsync, etc.)
+        # do not ping Healthchecks.io. Healthchecks.io monitors backup runs only, not config/lock/environment errors.
         __nasbackup_ensure_config || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_CONFIG_ERROR ))
-
         __nasbackup_acquire_lock || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR ))
+        __nasbackup_ensure_local_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR ))
+        __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
+
+        (( received_signal )) && return $received_signal
 
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
+            healthchecks_start_ping_sent=true
         fi
         (( received_signal )) && return $received_signal
-
-        __nasbackup_ensure_local_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR ))
-        __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
 
         set -- "${__NASBACKUP_JOBS[@]}"
         while (( $# >= 2 )); do
@@ -831,6 +835,8 @@ __nasbackup_backup() {
 
         local -r finished_at="$(date +%s)"
 
+        # Status files record every attempt including pre-flight failures; Healthchecks.io only reflects started backup runs.
+        # The two can legitimately differ.
         if [[ -n "$__NASBACKUP_LAST_RUN_FILE" && -n "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
             __nasbackup_write_status_file last_run "$run_id" "$finished_at" "$backup_exit_code" \
                 || print -u2 "[nasbackup] WARNING: failed to write last-run status file"
@@ -841,7 +847,9 @@ __nasbackup_backup() {
         fi
 
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
-            __nasbackup_healthchecks_ping "$backup_exit_code" "$run_id"
+            if $healthchecks_start_ping_sent; then
+                __nasbackup_healthchecks_ping "$backup_exit_code" "$run_id"
+            fi
         fi
 
         __nasbackup_release_lock
