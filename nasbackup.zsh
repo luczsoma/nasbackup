@@ -338,6 +338,11 @@ __nasbackup_ensure_local_environment() {
         return 1
     }
 
+    command -v "$__NASBACKUP_LOCAL_RSYNC_PATH" > /dev/null 2>&1 || {
+        print -u2 "[nasbackup] ERROR: local rsync not found or not executable: $__NASBACKUP_LOCAL_RSYNC_PATH"
+        return 1
+    }
+
     if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
         local mtime_predicate=""
         (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"
