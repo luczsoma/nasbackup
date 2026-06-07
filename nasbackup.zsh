@@ -542,7 +542,7 @@ __nasbackup_cron() {
             print -r -- "$existing_crontab" | grep -vF "$__NASBACKUP_CRON_MARKER"
         fi
         if [[ "$1" == "enable" ]]; then
-            print -r -- "${__NASBACKUP_SCHEDULE#cron=} /bin/zsh $__NASBACKUP_SCRIPT_PATH backup $__NASBACKUP_CRON_MARKER"
+            print -r -- "${__NASBACKUP_SCHEDULE#cron=} /bin/zsh ${(q)__NASBACKUP_SCRIPT_PATH} backup $__NASBACKUP_CRON_MARKER"
         fi
     } | crontab - || {
         print -u2 "[nasbackup] ERROR: failed to update crontab entry"
