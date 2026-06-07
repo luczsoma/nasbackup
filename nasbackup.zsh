@@ -757,11 +757,13 @@ __nasbackup_backup() {
 
         local -r finished_at="$(date +%s)"
 
-        __nasbackup_write_status_file last_run "$run_id" "$finished_at" "$backup_exit_code" \
-            || print -u2 "[nasbackup] WARNING: failed to write last-run status file"
-        if (( backup_exit_code == 0 )); then
-            __nasbackup_write_status_file last_success "$run_id" "$finished_at" "$backup_exit_code" \
-                || print -u2 "[nasbackup] WARNING: failed to write last-success status file"
+        if [[ -n "$__NASBACKUP_LAST_RUN_FILE" && -n "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
+            __nasbackup_write_status_file last_run "$run_id" "$finished_at" "$backup_exit_code" \
+                || print -u2 "[nasbackup] WARNING: failed to write last-run status file"
+            if (( backup_exit_code == 0 )); then
+                __nasbackup_write_status_file last_success "$run_id" "$finished_at" "$backup_exit_code" \
+                    || print -u2 "[nasbackup] WARNING: failed to write last-success status file"
+            fi
         fi
 
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
