@@ -233,6 +233,7 @@ __nasbackup_ensure_config() {
     [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty"; return 1; }
 
     # validate remote settings
     [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
@@ -343,6 +344,11 @@ __nasbackup_ensure_local_environment() {
         return 1
     }
 
+    command -v "$__NASBACKUP_LOCAL_CURL_PATH" > /dev/null 2>&1 || {
+        print -u2 "[nasbackup] ERROR: local curl not found or not executable: $__NASBACKUP_LOCAL_CURL_PATH"
+        return 1
+    }
+
     if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
         local mtime_predicate=""
         (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"
@@ -412,7 +418,7 @@ __nasbackup_healthchecks_ping() {
         curl_args+=(--data "$body")
     fi
 
-    curl "${curl_args[@]}" \
+    "$__NASBACKUP_LOCAL_CURL_PATH" "${curl_args[@]}" \
         || print -u2 "[nasbackup] WARNING: Healthchecks.io ping failed (signal=$signal, rid=$rid)"
 }
 
