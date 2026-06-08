@@ -2,9 +2,8 @@
 # BACKUP SETTINGS #
 ###################
 # Each backup job is a (job_name, source_directory) pair:
-#
-# job_name     - identifies the job; used as the target directory name under __NASBACKUP_REMOTE_ROOT and in log file names; must be unique, must only contain letters, digits, hyphens, or underscores; must not be "default"
-# source_dir   - local directory to back up; trailing slash is optional
+# job_name - identifies the job; used as the target directory name under __NASBACKUP_REMOTE_ROOT and in log file names; must be unique, must only contain letters, digits, hyphens, or underscores; must not be "default"
+# source_directory - local directory to back up; trailing slash is optional
 __NASBACKUP_JOBS=(
     "documents"     "$HOME/Documents"
     "pictures"      "$HOME/Pictures"
