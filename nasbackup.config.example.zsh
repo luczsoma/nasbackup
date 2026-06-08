@@ -91,6 +91,6 @@ __NASBACKUP_SCHEDULE=""
 __NASBACKUP_EXTRA_RSYNC_ARGS=(
     # Example: add --checksum to compare files by checksum (slow!) instead of size+mtime:
     # --checksum
-    # Example: add --no-ARG to turn off a built-in arg:
+    # Example: add --no-arg to turn off a built-in arg:
     # --no-delete
 )
