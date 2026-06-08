@@ -837,7 +837,6 @@ __nasbackup_backup() {
         __nasbackup_acquire_lock || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR ))
         __nasbackup_ensure_local_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR ))
         __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
-
         (( received_signal )) && return $received_signal
 
         if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
