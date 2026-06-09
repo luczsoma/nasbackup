@@ -906,7 +906,7 @@ __nasbackup_status() {
         local -r lock_started_at="${lock_started_at_epoch:+$(__nasbackup_format_epoch "$lock_started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")}"
         print -u2 "Started at: ${lock_started_at:-unknown}"
 
-        print -u2 "See logs: \`nasbackup logs\`"
+        print -u2 "See logs: cd \$(nasbackup logs)"
     fi
 
     print -u2 ""
