@@ -763,6 +763,7 @@ __nasbackup_backup_directory_to_nas() {
         --delete
 
         "${rsync_filter_args[@]}"
+        --rsh="ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH"
         --info=progress2,stats2
         --human-readable
