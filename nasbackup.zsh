@@ -270,9 +270,9 @@ __nasbackup_ensure_config() {
                     print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must have at least one entry"
                     return 1
                 fi
-                local -ra launchd_key_names=(Minute Hour Day Weekday Month)
+                local -ra launchd_field_names=(Minute Hour Day Weekday Month)
                 local -ra launchd_field_ranges=("0-59" "0-23" "1-31" "0-7" "1-12")
-                local launchd_entry launchd_comma_count
+                local launchd_entry
                 local -a launchd_fields
                 local lfi launchd_field launchd_range_glob
                 for launchd_entry in "${launchd_entries[@]}"; do
@@ -280,18 +280,17 @@ __nasbackup_ensure_config() {
                         print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not contain empty entries (check for leading, trailing, or consecutive semicolons)"
                         return 1
                     fi
-                    launchd_comma_count="${launchd_entry//[^,]/}"
-                    if (( ${#launchd_comma_count} != 4 )); then
+                    launchd_fields=("${(@s:,:)launchd_entry}")
+                    if (( ${#launchd_fields} != 5 )); then
                         print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" must have exactly 5 comma-separated fields (Minute,Hour,Day,Weekday,Month)"
                         return 1
                     fi
-                    launchd_fields=("${(@s:,:)launchd_entry}")
                     for lfi in {1..5}; do
                         launchd_field="${launchd_fields[$lfi]}"
                         if [[ -n "$launchd_field" ]]; then
                             launchd_range_glob="<${launchd_field_ranges[$lfi]}>"
                             if [[ "$launchd_field" != ${~launchd_range_glob} ]]; then
-                                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" ${launchd_key_names[$lfi]} field \"$launchd_field\" must be empty (wildcard) or an integer in range ${launchd_field_ranges[$lfi]}"
+                                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" ${launchd_field_names[$lfi]} field \"$launchd_field\" must be empty (wildcard) or an integer in range ${launchd_field_ranges[$lfi]}"
                                 return 1
                             fi
                         fi
@@ -458,16 +457,16 @@ __nasbackup_launchd_enable() {
 
         local -r schedule_value="${__NASBACKUP_SCHEDULE#launchd=}"
         local -ra launchd_entries=("${(@s:;:)schedule_value}")
-        local pfi
-        local -ra launchd_key_names=(Minute Hour Day Weekday Month)
+        local lfi
+        local -ra launchd_field_names=(Minute Hour Day Weekday Month)
 
         if (( ${#launchd_entries} == 1 )); then
             print "    <dict>"
             local -a launchd_fields=("${(@s:,:)launchd_entries[1]}")
-            for pfi in {1..5}; do
-                if [[ -n "${launchd_fields[$pfi]}" ]]; then
-                    print "        <key>${launchd_key_names[$pfi]}</key>"
-                    print "        <integer>${launchd_fields[$pfi]}</integer>"
+            for lfi in {1..5}; do
+                if [[ -n "${launchd_fields[$lfi]}" ]]; then
+                    print "        <key>${launchd_field_names[$lfi]}</key>"
+                    print "        <integer>${launchd_fields[$lfi]}</integer>"
                 fi
             done
             print "    </dict>"
@@ -476,11 +475,11 @@ __nasbackup_launchd_enable() {
             local launchd_entry
             for launchd_entry in "${launchd_entries[@]}"; do
                 print "        <dict>"
-                local -a plist_fields=("${(@s:,:)launchd_entry}")
-                for pfi in {1..5}; do
-                    if [[ -n "${plist_fields[$pfi]}" ]]; then
-                        print "            <key>${launchd_key_names[$pfi]}</key>"
-                        print "            <integer>${plist_fields[$pfi]}</integer>"
+                local -a launchd_fields=("${(@s:,:)launchd_entry}")
+                for lfi in {1..5}; do
+                    if [[ -n "${launchd_fields[$lfi]}" ]]; then
+                        print "            <key>${launchd_field_names[$lfi]}</key>"
+                        print "            <integer>${launchd_fields[$lfi]}</integer>"
                     fi
                 done
                 print "        </dict>"
@@ -747,7 +746,7 @@ __nasbackup_backup_directory_to_nas() {
     local -r default_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/default.rsync-filter"
     local -r job_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/$job_name.rsync-filter"
     [[ -f "$default_filter_file" ]] && rsync_filter_args+=("--filter=merge $default_filter_file")
-    [[ -f "$job_filter_file"     ]] && rsync_filter_args+=("--filter=merge $job_filter_file")
+    [[ -f "$job_filter_file" ]] && rsync_filter_args+=("--filter=merge $job_filter_file")
 
     local -ra rsync_args=(
         --recursive
