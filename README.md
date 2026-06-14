@@ -2,6 +2,8 @@
 
 A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional launchd or cron scheduling.
 
+**The nasbackup tool maintains a live mirror, not a versioned backup.** Each run brings the remote into sync with the current state of the source. Files deleted or overwritten on the source are deleted or overwritten on the remote on the next run; no previous versions are kept. If you need point-in-time snapshots or file history, consider layering your remote’s snapshot feature (e.g. Synology Btrfs snapshots) on top, or use a tool like [restic](https://restic.net) or [BorgBackup](https://www.borgbackup.org) instead.
+
 ## Prerequisites
 
 - `rsync` installed on both ends, accessible at a known path on the remote
