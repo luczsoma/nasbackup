@@ -18,7 +18,7 @@ __NASBACKUP_LOCAL_LOG_DIRECTORY="$HOME/Library/Logs/nasbackup"
 __NASBACKUP_LOCAL_LOG_RETENTION_DAYS=365
 # The path of the local rsync binary
 __NASBACKUP_LOCAL_RSYNC_PATH="/opt/homebrew/bin/rsync"
-# The path of the local curl binary (used for Healthchecks.io pings)
+# The path of the local curl binary; only required when Healthchecks.io monitoring is enabled
 __NASBACKUP_LOCAL_CURL_PATH="curl"
 
 ###################

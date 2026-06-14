@@ -285,7 +285,9 @@ __nasbackup_ensure_config() {
     [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
-    [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty"; return 1; }
+    if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
+        [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty when Healthchecks.io monitoring is enabled"; return 1; }
+    fi
 
     # validate remote settings
     [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
@@ -399,10 +401,12 @@ __nasbackup_ensure_local_environment() {
         return 1
     }
 
-    command -v "$__NASBACKUP_LOCAL_CURL_PATH" > /dev/null 2>&1 || {
-        __nasbackup_log "ERROR: local curl not found or not executable: $__NASBACKUP_LOCAL_CURL_PATH"
-        return 1
-    }
+    if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
+        command -v "$__NASBACKUP_LOCAL_CURL_PATH" > /dev/null 2>&1 || {
+            __nasbackup_log "ERROR: local curl not found or not executable: $__NASBACKUP_LOCAL_CURL_PATH"
+            return 1
+        }
+    fi
 
     if [[ -n "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" ]]; then
         local mtime_predicate=""
