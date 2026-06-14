@@ -19,6 +19,11 @@ typeset -ri \
     __NASBACKUP_EXIT_CODE_SIGNAL_QUIT=131 \
     __NASBACKUP_EXIT_CODE_SIGNAL_TERM=143
 
+# /tmp is world-writable and the name is fixed, so a leftover or adversarial
+# directory at this path blocks all backups (exit 10) until manually removed.
+# Using $TMPDIR with a user-specific suffix would scope the path per-user and
+# respect macOS per-session temp dirs, but complicates stale-lock detection
+# across sessions. Accepted: single-user script, manual cleanup is sufficient.
 typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
 typeset -r __NASBACKUP_TIMESTAMP_FORMAT="+%Y-%m-%dT%H-%M-%S%z"
