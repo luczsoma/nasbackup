@@ -52,7 +52,7 @@ __nasbackup_log() {
         message="$(date "$__NASBACKUP_TIMESTAMP_FORMAT") $message"
     fi
     
-    print -u2 "$message"
+    print -r -u2 -- "$message"
 }
 
 __nasbackup_get_process_start_epoch_or_empty() {
