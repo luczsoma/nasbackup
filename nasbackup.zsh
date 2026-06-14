@@ -848,17 +848,18 @@ __nasbackup_backup_directory_to_nas() {
         "${__NASBACKUP_EXTRA_RSYNC_ARGS[@]}"
     )
 
-    # TTY: print progress & stats to stderr so it doesn’t pollute stdout with user info
-    # non-TTY: discard stdout progress & stats so it doesn’t pollute launchd/cron logs (stats are already written to --log-file by rsync)
-    local stdout_target
+    # TTY: print progress & stats to stderr so it doesn’t pollute stdout
+    # non-TTY:
+    #  - discard stdout progress & stats so it doesn’t pollute launchd/cron logs (stats are already written to --log-file by rsync)
+    #  - route stderr through __nasbackup_log so daemon log lines get timestamps
     if (( __NASBACKUP_IS_TTY )); then
-        stdout_target=/dev/stderr
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
+            > /dev/stderr &
     else
-        stdout_target=/dev/null
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
+            > /dev/null \
+            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] $line"; done) &
     fi
-
-    "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
-        > $stdout_target &
     local -r rsync_pid=$!
     wait $rsync_pid
     local -r rsync_exit_code="$?"
@@ -869,12 +870,22 @@ __nasbackup_backup_directory_to_nas() {
         wait $rsync_pid 2> /dev/null
     fi
 
-    "$__NASBACKUP_LOCAL_RSYNC_PATH" \
-        --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3" \
-        --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
-        "$local_rsynclogfile" \
-        "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
-        >&2
+    if (( __NASBACKUP_IS_TTY )); then
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" \
+            --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3" \
+            --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
+            "$local_rsynclogfile" \
+            "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
+            >&2
+    else
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" \
+            --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3" \
+            --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
+            "$local_rsynclogfile" \
+            "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
+            > /dev/null \
+            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] $line"; done)
+    fi
     local -r log_upload_exit_code="$?"
 
     local job_exit_code=0
