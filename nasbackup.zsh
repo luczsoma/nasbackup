@@ -21,6 +21,7 @@ typeset -ri \
 
 typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
+typeset -r __NASBACKUP_TIMESTAMP_FORMAT="+%Y-%m-%dT%H-%M-%S%z"
 typeset -r __NASBACKUP_LAUNCHD_LABEL="io.github.luczsoma.nasbackup"
 typeset -r __NASBACKUP_LAUNCHD_PLIST_PATH="$HOME/Library/LaunchAgents/$__NASBACKUP_LAUNCHD_LABEL.plist"
 typeset -r __NASBACKUP_CRON_MARKER="# nasbackup-managed"
@@ -32,9 +33,26 @@ else
     typeset -ri __NASBACKUP_DATE_IS_GNU=0
 fi
 
+# Detect TTY at load time: test stderr (fd 2), since all output goes there
+[[ -t 2 ]] && typeset -ri __NASBACKUP_IS_TTY=1 || typeset -ri __NASBACKUP_IS_TTY=0
+
+__nasbackup_log() {
+    if (( $# != 1 )); then
+        __nasbackup_log "ERROR: __nasbackup_log requires 1 argument"
+        return 1
+    fi
+
+    local message="[nasbackup] $1"
+    if (( !__NASBACKUP_IS_TTY )); then
+        message="$(date "$__NASBACKUP_TIMESTAMP_FORMAT") $message"
+    fi
+    
+    print -u2 "$message"
+}
+
 __nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_get_process_start_epoch_or_empty requires 1 argument"
+        __nasbackup_log "ERROR: __nasbackup_get_process_start_epoch_or_empty requires 1 argument"
         return 0
     fi
 
@@ -57,7 +75,7 @@ __nasbackup_get_process_start_epoch_or_empty() {
 
 __nasbackup_format_epoch() {
     if (( $# != 2 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_format_epoch requires 2 arguments"
+        __nasbackup_log "ERROR: __nasbackup_format_epoch requires 2 arguments"
         return 1
     fi
     local -r epoch="$1"
@@ -161,7 +179,7 @@ __nasbackup_acquire_lock() {
     fi
 
     # lock is not stale
-    print -u2 "[nasbackup] ERROR: another backup is already in progress"
+    __nasbackup_log "ERROR: another backup is already in progress"
     # could not acquire lock (already locked)
     return 1
 }
@@ -186,7 +204,7 @@ __nasbackup_ensure_config() {
 
     __NASBACKUP_CONFIG_FILE="$__NASBACKUP_SCRIPT_DIRECTORY/nasbackup.config.zsh"
     if [[ ! -f "$__NASBACKUP_CONFIG_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: config file not found: $__NASBACKUP_CONFIG_FILE"
+        __nasbackup_log "ERROR: config file not found: $__NASBACKUP_CONFIG_FILE"
         return 1
     fi
     source "$__NASBACKUP_CONFIG_FILE"
@@ -195,17 +213,17 @@ __nasbackup_ensure_config() {
 
     # validate jobs: must have an even number of non-empty values
     if (( ${#__NASBACKUP_JOBS[@]} == 0 )); then
-        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS must not be empty"
+        __nasbackup_log "ERROR: config: __NASBACKUP_JOBS must not be empty"
         return 1
     fi
     if (( ${#__NASBACKUP_JOBS[@]} % 2 != 0 )); then
-        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS must have an even number of values (job_name, source_directory) pairs"
+        __nasbackup_log "ERROR: config: __NASBACKUP_JOBS must have an even number of values (job_name, source_directory) pairs"
         return 1
     fi
     local i
     for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i++ )); do
         if [[ -z "${__NASBACKUP_JOBS[$i]}" ]]; then
-            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_JOBS[$i] must not be empty"
+            __nasbackup_log "ERROR: config: __NASBACKUP_JOBS[$i] must not be empty"
             return 1
         fi
     done
@@ -215,15 +233,15 @@ __nasbackup_ensure_config() {
     for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
         local job_name="${__NASBACKUP_JOBS[$i]}"
         if [[ ! "$job_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-            print -u2 "[nasbackup] ERROR: config: job_name \"$job_name\" must only contain letters, digits, hyphens, or underscores"
+            __nasbackup_log "ERROR: config: job_name \"$job_name\" must only contain letters, digits, hyphens, or underscores"
             return 1
         fi
         if [[ "$job_name" == "default" ]]; then
-            print -u2 "[nasbackup] ERROR: config: job_name \"default\" is reserved"
+            __nasbackup_log "ERROR: config: job_name \"default\" is reserved"
             return 1
         fi
         if [[ "${job_names_seen[(re)$job_name]}" == "$job_name" ]]; then
-            print -u2 "[nasbackup] ERROR: config: duplicate job_name \"$job_name\""
+            __nasbackup_log "ERROR: config: duplicate job_name \"$job_name\""
             return 1
         fi
         job_names_seen+=("$job_name")
@@ -234,33 +252,33 @@ __nasbackup_ensure_config() {
         local job_name="${__NASBACKUP_JOBS[$i]}"
         local source_dir="${__NASBACKUP_JOBS[$i+1]%/}"
         if [[ ! -d "$source_dir" ]]; then
-            print -u2 "[nasbackup] ERROR: config: job \"$job_name\" source directory is not a directory: $source_dir"
+            __nasbackup_log "ERROR: config: job \"$job_name\" source directory is not a directory: $source_dir"
             return 1
         fi
     done
 
     # validate local settings
-    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
-    { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
-    [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
-    [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
+    { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty"; return 1; }
 
     # validate remote settings
-    [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_ROOT" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty"; return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
-    { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
-    [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_ROOT" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
+    { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
+    [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty"; return 1; }
 
     # validate monitoring settings
-    [[ -v __NASBACKUP_HEALTHCHECKS_PING_KEY ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
-    [[ -v __NASBACKUP_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_KEY ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_SLUG ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
 
     # validate scheduling settings
-    [[ -v __NASBACKUP_SCHEDULE ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
+    [[ -v __NASBACKUP_SCHEDULE ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
     if [[ -n "$__NASBACKUP_SCHEDULE" ]]; then
         if [[ "${__NASBACKUP_SCHEDULE//[^=]/}" != "=" ]]; then
-            print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be in the format \"launchd=<expression>\" or \"cron=<expression>\""
+            __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE must be in the format \"launchd=<expression>\" or \"cron=<expression>\""
             return 1
         fi
         local -r schedule_type="${__NASBACKUP_SCHEDULE%=*}"
@@ -268,16 +286,16 @@ __nasbackup_ensure_config() {
         case "$schedule_type" in
             launchd)
                 if [[ "$OSTYPE" != darwin* ]]; then
-                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"launchd\" is only supported on macOS; use \"cron=...\" instead"
+                    __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE type \"launchd\" is only supported on macOS; use \"cron=...\" instead"
                     return 1
                 fi
                 if [[ -z "$schedule_value" ]]; then
-                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not be empty"
+                    __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not be empty"
                     return 1
                 fi
                 local -ra launchd_entries=("${(@s:;:)schedule_value}")
                 if (( ${#launchd_entries} == 0 )); then
-                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must have at least one entry"
+                    __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE launchd expression must have at least one entry"
                     return 1
                 fi
                 local -ra launchd_field_names=(Minute Hour Day Weekday Month)
@@ -287,12 +305,12 @@ __nasbackup_ensure_config() {
                 local lfi launchd_field launchd_range_glob
                 for launchd_entry in "${launchd_entries[@]}"; do
                     if [[ -z "$launchd_entry" ]]; then
-                        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not contain empty entries (check for leading, trailing, or consecutive semicolons)"
+                        __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE launchd expression must not contain empty entries (check for leading, trailing, or consecutive semicolons)"
                         return 1
                     fi
                     launchd_fields=("${(@s:,:)launchd_entry}")
                     if (( ${#launchd_fields} != 5 )); then
-                        print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" must have exactly 5 comma-separated fields (Minute,Hour,Day,Weekday,Month)"
+                        __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" must have exactly 5 comma-separated fields (Minute,Hour,Day,Weekday,Month)"
                         return 1
                     fi
                     for lfi in {1..5}; do
@@ -300,7 +318,7 @@ __nasbackup_ensure_config() {
                         if [[ -n "$launchd_field" ]]; then
                             launchd_range_glob="<${launchd_field_ranges[$lfi]}>"
                             if [[ "$launchd_field" != ${~launchd_range_glob} ]]; then
-                                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" ${launchd_field_names[$lfi]} field \"$launchd_field\" must be empty (wildcard) or an integer in range ${launchd_field_ranges[$lfi]}"
+                                __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE launchd entry \"$launchd_entry\" ${launchd_field_names[$lfi]} field \"$launchd_field\" must be empty (wildcard) or an integer in range ${launchd_field_ranges[$lfi]}"
                                 return 1
                             fi
                         fi
@@ -309,29 +327,29 @@ __nasbackup_ensure_config() {
                 ;;
             cron)
                 if [[ "$OSTYPE" == darwin* ]]; then
-                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"cron\" is not supported on macOS; use \"launchd=...\" instead"
+                    __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE type \"cron\" is not supported on macOS; use \"launchd=...\" instead"
                     return 1
                 fi
                 if [[ -z "$schedule_value" ]]; then
-                    print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE cron expression must not be empty"
+                    __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE cron expression must not be empty"
                     return 1
                 fi
                 ;;
             *)
-                print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE type \"$schedule_type\" is not supported; must be \"launchd\" or \"cron\""
+                __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE type \"$schedule_type\" is not supported; must be \"launchd\" or \"cron\""
                 return 1
                 ;;
         esac
     fi
 
     # validate advanced settings
-    [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
+    [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
 
     # cross-validate: no job name may resolve to the remote log directory
     for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
         local job_name="${__NASBACKUP_JOBS[$i]}"
         if [[ "$__NASBACKUP_REMOTE_ROOT/$job_name" == "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]]; then
-            print -u2 "[nasbackup] ERROR: config: job_name \"$job_name\" conflicts with __NASBACKUP_REMOTE_LOG_DIRECTORY"
+            __nasbackup_log "ERROR: config: job_name \"$job_name\" conflicts with __NASBACKUP_REMOTE_LOG_DIRECTORY"
             return 1
         fi
     done
@@ -344,17 +362,17 @@ __nasbackup_ensure_config() {
 
 __nasbackup_ensure_local_environment() {
     mkdir -p "$__NASBACKUP_LOCAL_LOG_DIRECTORY" || {
-        print -u2 "[nasbackup] ERROR: failed to create local log directory"
+        __nasbackup_log "ERROR: failed to create local log directory"
         return 1
     }
 
     command -v "$__NASBACKUP_LOCAL_RSYNC_PATH" > /dev/null 2>&1 || {
-        print -u2 "[nasbackup] ERROR: local rsync not found or not executable: $__NASBACKUP_LOCAL_RSYNC_PATH"
+        __nasbackup_log "ERROR: local rsync not found or not executable: $__NASBACKUP_LOCAL_RSYNC_PATH"
         return 1
     }
 
     command -v "$__NASBACKUP_LOCAL_CURL_PATH" > /dev/null 2>&1 || {
-        print -u2 "[nasbackup] ERROR: local curl not found or not executable: $__NASBACKUP_LOCAL_CURL_PATH"
+        __nasbackup_log "ERROR: local curl not found or not executable: $__NASBACKUP_LOCAL_CURL_PATH"
         return 1
     }
 
@@ -362,7 +380,32 @@ __nasbackup_ensure_local_environment() {
         local mtime_predicate=""
         (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS"
         find "$__NASBACKUP_LOCAL_LOG_DIRECTORY" -type f -name 'nasbackup-*.log' ${=mtime_predicate} -delete > /dev/null 2>&1 \
-            || print -u2 "[nasbackup] WARNING: local log cleanup failed"
+            || __nasbackup_log "WARNING: local log cleanup failed"
+
+        local cutoff_str=""
+        if (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS > 0 )); then
+            local -r cutoff_epoch=$(( $(date +%s) - __NASBACKUP_LOCAL_LOG_RETENTION_DAYS * 86400 ))
+            cutoff_str="$(__nasbackup_format_epoch "$cutoff_epoch" "$__NASBACKUP_TIMESTAMP_FORMAT")"
+        fi
+
+        local -ra daemon_logs=(
+            "$__NASBACKUP_LOCAL_LOG_DIRECTORY/launchd.stderr.log"
+            "$__NASBACKUP_LOCAL_LOG_DIRECTORY/cron.stderr.log"
+        )
+
+        local log_file
+        for log_file in "${daemon_logs[@]}"; do
+            if [[ -f "$log_file" ]]; then
+                if (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS == 0 )); then
+                    :> "$log_file" 2> /dev/null
+                else
+                    if awk -v cutoff="$cutoff_str" 'substr($0, 1, 24) >= cutoff' "$log_file" > "$log_file.tmp"; then
+                        cp "$log_file.tmp" "$log_file"
+                    fi
+                    rm -f "$log_file.tmp"
+                fi
+            fi
+        done
     fi
 }
 
@@ -378,24 +421,24 @@ __nasbackup_ensure_remote_environment() {
     local -r ssh_remote_command_exit_code="$?"
 
     if (( ssh_remote_command_exit_code == 2 )); then
-        print -u2 "[nasbackup] WARNING: remote log cleanup failed"
+        __nasbackup_log "WARNING: remote log cleanup failed"
         return 0
     fi
 
     if (( ssh_remote_command_exit_code != 0 )); then
-        print -u2 "[nasbackup] ERROR: remote ($__NASBACKUP_REMOTE_HOST) is not reachable, rsync not found at $__NASBACKUP_REMOTE_RSYNC_PATH, or remote log directory creation failed (ssh exit code $ssh_remote_command_exit_code)"
+        __nasbackup_log "ERROR: remote ($__NASBACKUP_REMOTE_HOST) is not reachable, rsync not found at $__NASBACKUP_REMOTE_RSYNC_PATH, or remote log directory creation failed (ssh exit code $ssh_remote_command_exit_code)"
         return 1
     fi
 }
 
 __nasbackup_healthchecks_ping() {
     if (( $# < 2 || $# > 3 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping requires 2 or 3 arguments"
+        __nasbackup_log "ERROR: __nasbackup_healthchecks_ping requires 2 or 3 arguments"
         return 1
     fi
 
     if [[ -z "$__NASBACKUP_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping requires __NASBACKUP_HEALTHCHECKS_PING_KEY and __NASBACKUP_HEALTHCHECKS_PING_SLUG to be set"
+        __nasbackup_log "ERROR: __nasbackup_healthchecks_ping requires __NASBACKUP_HEALTHCHECKS_PING_KEY and __NASBACKUP_HEALTHCHECKS_PING_SLUG to be set"
         return 1
     fi
 
@@ -404,12 +447,12 @@ __nasbackup_healthchecks_ping() {
     local -r body="${3:-}"
 
     if [[ "$signal" != "start" && "$signal" != "log" && "$signal" != <0-255> ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping: invalid signal: $signal"
+        __nasbackup_log "ERROR: __nasbackup_healthchecks_ping: invalid signal: $signal"
         return 1
     fi
 
     if (( $# == 3 )) && [[ "$signal" != "log" ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping: body parameter is only valid for signal=log"
+        __nasbackup_log "ERROR: __nasbackup_healthchecks_ping: body parameter is only valid for signal=log"
         return 1
     fi
 
@@ -428,7 +471,7 @@ __nasbackup_healthchecks_ping() {
     fi
 
     "$__NASBACKUP_LOCAL_CURL_PATH" "${curl_args[@]}" \
-        || print -u2 "[nasbackup] WARNING: Healthchecks.io ping failed (signal=$signal, rid=$rid)"
+        || __nasbackup_log "WARNING: Healthchecks.io ping failed (signal=$signal, rid=$rid)"
 }
 
 __nasbackup_xml_escape() {
@@ -443,7 +486,7 @@ __nasbackup_launchd_enable() {
     __nasbackup_ensure_local_environment || return 1
 
     mkdir -p "$HOME/Library/LaunchAgents" 2> /dev/null || {
-        print -u2 "[nasbackup] ERROR: could not create ~/Library/LaunchAgents"
+        __nasbackup_log "ERROR: could not create ~/Library/LaunchAgents"
         return 1
     }
 
@@ -500,10 +543,8 @@ __nasbackup_launchd_enable() {
         print "    <false/>"
         print "    <key>ProcessType</key>"
         print "    <string>Background</string>"
-        print "    <key>StandardOutPath</key>"
-        print "    <string>$xml_log_dir/launchd.out.log</string>"
         print "    <key>StandardErrorPath</key>"
-        print "    <string>$xml_log_dir/launchd.err.log</string>"
+        print "    <string>$xml_log_dir/launchd.stderr.log</string>"
         print "    <key>NasbackupSchedule</key>"
         print "    <string>${__NASBACKUP_SCHEDULE#launchd=}</string>"
         print "</dict>"
@@ -513,27 +554,27 @@ __nasbackup_launchd_enable() {
     launchctl bootout "gui/$(id -u)/$__NASBACKUP_LAUNCHD_LABEL" 2> /dev/null
     launchctl bootstrap "gui/$(id -u)" "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null || {
         rm -f "$__NASBACKUP_LAUNCHD_PLIST_PATH"
-        print -u2 "[nasbackup] ERROR: launchctl bootstrap failed"
+        __nasbackup_log "ERROR: launchctl bootstrap failed"
         return 1
     }
 
-    print -u2 "[nasbackup] scheduled backups enabled (launchd, schedule: ${__NASBACKUP_SCHEDULE#launchd=})"
+    __nasbackup_log "scheduled backups enabled (launchd, schedule: ${__NASBACKUP_SCHEDULE#launchd=})"
 }
 
 __nasbackup_launchd_disable() {
     launchctl bootout "gui/$(id -u)/$__NASBACKUP_LAUNCHD_LABEL" 2> /dev/null
     rm -f "$__NASBACKUP_LAUNCHD_PLIST_PATH"
-    print -u2 "[nasbackup] scheduled backups disabled (launchd)"
+    __nasbackup_log "scheduled backups disabled (launchd)"
 }
 
 __nasbackup_cron() {
     if (( $# != 1 )) || [[ "$1" != "enable" && "$1" != "disable" && "$1" != "status" ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_cron requires an argument: enable|disable|status"
+        __nasbackup_log "ERROR: __nasbackup_cron requires an argument: enable|disable|status"
         return 1
     fi
 
     command -v crontab > /dev/null 2>&1 || {
-        print -u2 "[nasbackup] ERROR: crontab not found"
+        __nasbackup_log "ERROR: crontab not found"
         return 1
     }
 
@@ -543,7 +584,7 @@ __nasbackup_cron() {
     if (( crontab_read_exit != 0 )); then
         local -r crontab_err="$(crontab -l 2>&1 > /dev/null)"
         if [[ "$crontab_err" != *"no crontab"* ]]; then
-            print -u2 "[nasbackup] ERROR: failed to read current crontab: $crontab_err"
+            __nasbackup_log "ERROR: failed to read current crontab: $crontab_err"
             return 1
         fi
         existing_crontab=""
@@ -562,22 +603,22 @@ __nasbackup_cron() {
             print -r -- "$existing_crontab" | grep -vF "$__NASBACKUP_CRON_MARKER"
         fi
         if [[ "$1" == "enable" ]]; then
-            print -r -- "${__NASBACKUP_SCHEDULE#cron=} /bin/zsh ${(q)__NASBACKUP_SCRIPT_PATH} backup $__NASBACKUP_CRON_MARKER"
+            print -r -- "${__NASBACKUP_SCHEDULE#cron=} /bin/zsh ${(q)__NASBACKUP_SCRIPT_PATH} backup 2>> ${(q)__NASBACKUP_LOCAL_LOG_DIRECTORY}/cron.stderr.log $__NASBACKUP_CRON_MARKER"
         fi
     } | crontab - || {
-        print -u2 "[nasbackup] ERROR: failed to update crontab entry"
+        __nasbackup_log "ERROR: failed to update crontab entry"
         return 1
     }
 
     case "$1" in
         enable)
-            print -u2 "[nasbackup] scheduled backups enabled (cron, schedule: ${__NASBACKUP_SCHEDULE#cron=})"
+            __nasbackup_log "scheduled backups enabled (cron, schedule: ${__NASBACKUP_SCHEDULE#cron=})"
             ;;
         disable)
-            print -u2 "[nasbackup] scheduled backups disabled (cron)"
+            __nasbackup_log "scheduled backups disabled (cron)"
             ;;
         *)
-            print -u2 "[nasbackup] ERROR: invalid execution path in __nasbackup_cron"
+            __nasbackup_log "ERROR: invalid execution path in __nasbackup_cron"
             return 1
             ;;
     esac
@@ -585,17 +626,17 @@ __nasbackup_cron() {
 
 __nasbackup_write_status_file() {
     if (( $# != 4 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_write_status_file requires 4 arguments"
+        __nasbackup_log "ERROR: __nasbackup_write_status_file requires 4 arguments"
         return 1
     fi
 
     if [[ -z "$__NASBACKUP_LAST_RUN_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
+        __nasbackup_log "ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
         return 1
     fi
 
     if [[ -z "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
+        __nasbackup_log "ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
         return 1
     fi
 
@@ -614,7 +655,7 @@ __nasbackup_write_status_file() {
             status_file="$__NASBACKUP_LAST_SUCCESS_FILE"
             ;;
         *)
-            print -u2 "[nasbackup] ERROR: invalid status file type: $status_type"
+            __nasbackup_log "ERROR: invalid status file type: $status_type"
             return 1
             ;;
     esac
@@ -623,7 +664,7 @@ __nasbackup_write_status_file() {
 
     local -r started_at="$(__nasbackup_get_process_start_epoch_or_empty $$)"
     if [[ -z "$started_at" ]]; then
-        print -u2 "[nasbackup] WARNING: could not determine process start time for status file"
+        __nasbackup_log "WARNING: could not determine process start time for status file"
     fi
 
     {
@@ -637,7 +678,7 @@ __nasbackup_write_status_file() {
 
 __nasbackup_get_status_value_or_empty() {
     if (( $# != 2 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_get_status_value_or_empty requires 2 arguments"
+        __nasbackup_log "ERROR: __nasbackup_get_status_value_or_empty requires 2 arguments"
         return 1
     fi
 
@@ -651,17 +692,17 @@ __nasbackup_get_status_value_or_empty() {
 
 __nasbackup_print_status_file() {
     if (( $# != 1 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_print_status_file requires 1 argument"
+        __nasbackup_log "ERROR: __nasbackup_print_status_file requires 1 argument"
         return 1
     fi
 
     if [[ -z "$__NASBACKUP_LAST_RUN_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
+        __nasbackup_log "ERROR: __NASBACKUP_LAST_RUN_FILE is not set"
         return 1
     fi
 
     if [[ -z "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
-        print -u2 "[nasbackup] ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
+        __nasbackup_log "ERROR: __NASBACKUP_LAST_SUCCESS_FILE is not set"
         return 1
     fi
 
@@ -679,13 +720,13 @@ __nasbackup_print_status_file() {
             status_label="Last successful run"
             ;;
         *)
-            print -u2 "[nasbackup] ERROR: invalid status file type: $status_type"
+            __nasbackup_log "ERROR: invalid status file type: $status_type"
             return 1
             ;;
     esac
 
     if [[ ! -f "$status_file" ]]; then
-        print -u2 "$status_label: never"
+        __nasbackup_log "$status_label: never"
         return 0
     fi
 
@@ -695,23 +736,23 @@ __nasbackup_print_status_file() {
     local started_at="unknown"
     local -r started_at_epoch="$(__nasbackup_get_status_value_or_empty "$status_file" started_at)"
     if [[ "$started_at_epoch" == <-> ]]; then
-        started_at="$(__nasbackup_format_epoch "$started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
+        started_at="$(__nasbackup_format_epoch "$started_at_epoch" "$__NASBACKUP_TIMESTAMP_FORMAT")"
     fi
 
     local finished_at="unknown"
     local -r finished_at_epoch="$(__nasbackup_get_status_value_or_empty "$status_file" finished_at)"
     if [[ "$finished_at_epoch" == <-> ]]; then
-        finished_at="$(__nasbackup_format_epoch "$finished_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")"
+        finished_at="$(__nasbackup_format_epoch "$finished_at_epoch" "$__NASBACKUP_TIMESTAMP_FORMAT")"
     fi
 
     local -r exit_code="$(__nasbackup_get_status_value_or_empty "$status_file" exit_code)"
 
-    print -u2 "$status_label: ${run_id:-unknown} (pid=${pid:-unknown}) from $started_at to $finished_at with exit_code=${exit_code:-unknown}"
+    __nasbackup_log "$status_label: ${run_id:-unknown} (pid=${pid:-unknown}) from $started_at to $finished_at with exit_code=${exit_code:-unknown}"
 }
 
 __nasbackup_backup_directory_to_nas() {
     if (( $# != 3 )); then
-        print -u2 "[nasbackup] ERROR: __nasbackup_backup_directory_to_nas requires 3 arguments"
+        __nasbackup_log "ERROR: __nasbackup_backup_directory_to_nas requires 3 arguments"
         return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
 
@@ -719,15 +760,11 @@ __nasbackup_backup_directory_to_nas() {
     local -r source_dir="${2%/}"
     local -r run_id="$3"
 
-    local is_tty=0
-    # test stderr, not stdout: output goes to fd 2, so fd 2 reflects whether we have a terminal
-    [[ -t 2 ]] && is_tty=1
-
     local -r log_banner="Starting backup job: $job_name ($source_dir)"
-    if (( is_tty )); then
-        print -u2 "========================================================================"
-        print -u2 " $log_banner"
-        print -u2 "========================================================================"
+    if (( __NASBACKUP_IS_TTY )); then
+        __nasbackup_log "========================================================================"
+        __nasbackup_log " $log_banner"
+        __nasbackup_log "========================================================================"
     fi
 
     if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
@@ -736,16 +773,16 @@ __nasbackup_backup_directory_to_nas() {
 
     local -r started_at_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
     if [[ -z "$started_at_epoch" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: could not determine process start time"
+        __nasbackup_log "[$job_name] ERROR: could not determine process start time"
         return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
-    local -r started_at_formatted="$(__nasbackup_format_epoch "$started_at_epoch" "+%Y%m%d-%H%M%S")"
+    local -r started_at_formatted="$(__nasbackup_format_epoch "$started_at_epoch" "$__NASBACKUP_TIMESTAMP_FORMAT")"
     if [[ -z "$started_at_formatted" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: could not format process start time"
+        __nasbackup_log "[$job_name] ERROR: could not format process start time"
         return $__NASBACKUP_EXIT_CODE_GENERIC_ERROR
     fi
 
-    local -r local_rsynclogfile="$__NASBACKUP_LOCAL_LOG_DIRECTORY/nasbackup-$started_at_formatted-$run_id-$job_name.log"
+    local -r local_rsynclogfile="$__NASBACKUP_LOCAL_LOG_DIRECTORY/nasbackup--$started_at_formatted--$run_id--$job_name.log"
 
     local -a rsync_filter_args=()
     local -r default_filter_file="$__NASBACKUP_RSYNC_FILTER_DIRECTORY/default.rsync-filter"
@@ -780,7 +817,7 @@ __nasbackup_backup_directory_to_nas() {
     # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)
     # non-TTY: discard stdout progress & stats (so it doesn’t pollute launchd/cron logs)
     local stdout_target
-    if (( is_tty )); then
+    if (( __NASBACKUP_IS_TTY )); then
         stdout_target=/dev/stderr
     else
         stdout_target=/dev/null
@@ -808,15 +845,15 @@ __nasbackup_backup_directory_to_nas() {
     local job_exit_code=0
 
     if (( rsync_exit_code != 0 && !received_signal )); then
-        print -u2 "[nasbackup] [$job_name] ERROR: rsync failed (exit code $rsync_exit_code)"
+        __nasbackup_log "[$job_name] ERROR: rsync failed (exit code $rsync_exit_code)"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_ERROR ))
     fi
     if [[ ! -f "$local_rsynclogfile" ]] && (( !received_signal )); then
-        print -u2 "[nasbackup] [$job_name] ERROR: rsync produced no log file"
+        __nasbackup_log "[$job_name] ERROR: rsync produced no log file"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_NO_RSYNC_LOGFILE_ERROR ))
     fi
     if (( log_upload_exit_code != 0 && !received_signal )); then
-        print -u2 "[nasbackup] [$job_name] ERROR: log upload failed"
+        __nasbackup_log "[$job_name] ERROR: log upload failed"
         (( job_exit_code |= __NASBACKUP_JOB_EXIT_CODE_BITMASK_RSYNC_LOGFILE_UPLOAD_ERROR ))
     fi
 
@@ -864,10 +901,10 @@ __nasbackup_backup() {
 
         if [[ -n "$__NASBACKUP_LAST_RUN_FILE" && -n "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
             __nasbackup_write_status_file last_run "$run_id" "$finished_at" "$backup_exit_code" \
-                || print -u2 "[nasbackup] WARNING: failed to write last-run status file"
+                || __nasbackup_log "WARNING: failed to write last-run status file"
             if (( backup_exit_code == 0 )); then
                 __nasbackup_write_status_file last_success "$run_id" "$finished_at" "$backup_exit_code" \
-                    || print -u2 "[nasbackup] WARNING: failed to write last-success status file"
+                    || __nasbackup_log "WARNING: failed to write last-success status file"
             fi
         fi
 
@@ -892,7 +929,7 @@ __nasbackup_logs() {
     if [[ -d "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]]; then
         print "$__NASBACKUP_LOCAL_LOG_DIRECTORY"
     else
-        print -u2 "[nasbackup] no logs yet (directory does not exist: $__NASBACKUP_LOCAL_LOG_DIRECTORY)"
+        __nasbackup_log "no logs yet (directory does not exist: $__NASBACKUP_LOCAL_LOG_DIRECTORY)"
     fi
 }
 
@@ -900,40 +937,40 @@ __nasbackup_status() {
     __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if __nasbackup_acquire_lock 2> /dev/null; then
-        print -u2 "[nasbackup] no backup is currently in progress"
+        __nasbackup_log "no backup is currently in progress"
         __nasbackup_release_lock
     else
-        print -u2 "[nasbackup] another backup is currently in progress"
+        __nasbackup_log "another backup is currently in progress"
 
         local -r lock_pid="$(__nasbackup_get_lock_pid_or_empty)"
-        print -u2 "PID: ${lock_pid:-unknown}"
+        __nasbackup_log "PID: ${lock_pid:-unknown}"
 
         local -r lock_started_at_epoch="$(__nasbackup_get_lock_started_at_or_empty)"
-        local -r lock_started_at="${lock_started_at_epoch:+$(__nasbackup_format_epoch "$lock_started_at_epoch" "+%Y-%m-%dT%H:%M:%S%z")}"
-        print -u2 "Started at: ${lock_started_at:-unknown}"
+        local -r lock_started_at="${lock_started_at_epoch:+$(__nasbackup_format_epoch "$lock_started_at_epoch" "$__NASBACKUP_TIMESTAMP_FORMAT")}"
+        __nasbackup_log "Started at: ${lock_started_at:-unknown}"
 
-        print -u2 "See logs: cd \$(nasbackup logs)"
+        __nasbackup_log "See logs: cd \$(nasbackup logs)"
     fi
 
-    print -u2 ""
+    __nasbackup_log ""
     __nasbackup_print_status_file last_run
     __nasbackup_print_status_file last_success
 
-    print -u2 ""
+    __nasbackup_log ""
     local installed_schedule
     if [[ "$OSTYPE" == darwin* ]]; then
         if [[ -f "$__NASBACKUP_LAUNCHD_PLIST_PATH" ]]; then
             installed_schedule="$(plutil -extract NasbackupSchedule raw -o - "$__NASBACKUP_LAUNCHD_PLIST_PATH" 2> /dev/null)"
-            print -u2 "Scheduled backups: enabled (launchd, schedule: ${installed_schedule:-unknown})"
+            __nasbackup_log "Scheduled backups: enabled (launchd, schedule: ${installed_schedule:-unknown})"
         else
-            print -u2 "Scheduled backups: disabled"
+            __nasbackup_log "Scheduled backups: disabled"
         fi
     else
         installed_schedule="$(__nasbackup_cron status)"
         if [[ -n "$installed_schedule" ]]; then
-            print -u2 "Scheduled backups: enabled (cron, schedule: $installed_schedule)"
+            __nasbackup_log "Scheduled backups: enabled (cron, schedule: $installed_schedule)"
         else
-            print -u2 "Scheduled backups: disabled"
+            __nasbackup_log "Scheduled backups: disabled"
         fi
     fi
 
@@ -944,7 +981,7 @@ __nasbackup_enable() {
     __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if [[ -z "$__NASBACKUP_SCHEDULE" ]]; then
-        print -u2 "[nasbackup] ERROR: no schedule configured; set __NASBACKUP_SCHEDULE in the config"
+        __nasbackup_log "ERROR: no schedule configured; set __NASBACKUP_SCHEDULE in the config"
         return $__NASBACKUP_EXIT_CODE_SCHEDULING_ERROR
     fi
 
@@ -966,14 +1003,14 @@ __nasbackup_disable() {
 }
 
 __nasbackup_help() {
-    print -u2 "Usage:"
-    print -u2 "  nasbackup"
-    print -u2 "  nasbackup backup"
-    print -u2 "  nasbackup logs"
-    print -u2 "  nasbackup status"
-    print -u2 "  nasbackup enable"
-    print -u2 "  nasbackup disable"
-    print -u2 "  nasbackup help"
+    __nasbackup_log "Usage:"
+    __nasbackup_log "  nasbackup"
+    __nasbackup_log "  nasbackup backup"
+    __nasbackup_log "  nasbackup logs"
+    __nasbackup_log "  nasbackup status"
+    __nasbackup_log "  nasbackup enable"
+    __nasbackup_log "  nasbackup disable"
+    __nasbackup_log "  nasbackup help"
 }
 
 __nasbackup_main() {

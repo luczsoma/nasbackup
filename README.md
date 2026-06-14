@@ -76,15 +76,31 @@ You can control what gets included or excluded from backups with rsync’s versa
 
 ## Logs
 
+### Per-job rsync logs
+
 Each job writes a structured per-file rsync log (`--log-file`) to `__NASBACKUP_LOCAL_LOG_DIRECTORY`:
 
 ```
-nasbackup-<date>-<run_id>-<job_name>.log
+nasbackup--<date>--<run_id>--<job_name>.log
+```
+
+For example:
+
+```
+nasbackup--2026-06-21T00-00-00+0200--5fbd043d-3ba9-4e6e-9190-876892051388--documents.log
 ```
 
 After a job completes, its log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the remote.
 
 At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` days are deleted (if set), and remote logs older than `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted (if set).
+
+### Diagnostic output
+
+All diagnostic output (status messages, warnings, errors) goes to stderr. Nothing is written to stdout during a `backup` run.
+
+When run interactively, stderr goes to the terminal as usual.
+
+When run via launchd or cron, stderr is redirected to `launchd.stderr.log` / `cron.stderr.log` inside `__NASBACKUP_LOCAL_LOG_DIRECTORY`. Each line is prefixed with a timestamp (e.g., `2026-06-21T00-00-00+0200`). If `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` is set, lines older than that many days are dropped from the file at the start of each run.
 
 ## Monitoring
 
@@ -96,7 +112,7 @@ External monitoring in nasbackup is supported via [Healthchecks.io](https://heal
 - a **log** ping at the start of each individual job,
 - a **finish** ping (with exit code) at the end of the run.
 
-Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. To diagnose a run, check stdout/stderr and the logs, and `nasbackup status`.
+Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. To diagnose a run, check stderr and the logs, and `nasbackup status`.
 
 ## Scheduling
 
