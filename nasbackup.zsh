@@ -27,6 +27,9 @@ typeset -ri \
 typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
 typeset -r __NASBACKUP_TIMESTAMP_FORMAT="+%Y-%m-%dT%H-%M-%S%z"
+# shared SSH options for all remote operations (env-check ssh and rsync --rsh)
+# ConnectTimeout + BatchMode to fail fast & non-interactively, ServerAlive* to detect a stalled connection
+typeset -r __NASBACKUP_SSH_OPTIONS="-o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
 typeset -r __NASBACKUP_LAUNCHD_LABEL="io.github.luczsoma.nasbackup"
 typeset -r __NASBACKUP_LAUNCHD_PLIST_PATH="$HOME/Library/LaunchAgents/$__NASBACKUP_LAUNCHD_LABEL.plist"
 typeset -r __NASBACKUP_CRON_MARKER="# nasbackup-managed"
@@ -453,7 +456,7 @@ __nasbackup_ensure_remote_environment() {
     # compiled with CONFIG_FEATURE_FIND_DELETE=y (failure is non-fatal: SSH exit 2 → WARNING log)
     local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' ${mtime_predicate} -delete || exit 2"
 
-    ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$__NASBACKUP_REMOTE_HOST" \
+    ssh ${=__NASBACKUP_SSH_OPTIONS} "$__NASBACKUP_REMOTE_HOST" \
         "${remote_env_setup}${__NASBACKUP_REMOTE_LOG_RETENTION_DAYS:+; $remote_log_cleanup}" \
         2> /dev/null
     local -r ssh_remote_command_exit_code="$?"
@@ -843,7 +846,7 @@ __nasbackup_backup_directory_to_nas() {
         --delete
 
         "${rsync_filter_args[@]}"
-        --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+        --rsh="ssh $__NASBACKUP_SSH_OPTIONS"
         --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH"
         --info=progress2,stats2
         --human-readable
@@ -876,14 +879,14 @@ __nasbackup_backup_directory_to_nas() {
 
     if (( __NASBACKUP_IS_TTY )); then
         "$__NASBACKUP_LOCAL_RSYNC_PATH" \
-            --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3" \
+            --rsh="ssh $__NASBACKUP_SSH_OPTIONS" \
             --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
             "$local_rsynclogfile" \
             "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
             >&2
     else
         "$__NASBACKUP_LOCAL_RSYNC_PATH" \
-            --rsh="ssh -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3" \
+            --rsh="ssh $__NASBACKUP_SSH_OPTIONS" \
             --rsync-path="$__NASBACKUP_REMOTE_RSYNC_PATH" \
             "$local_rsynclogfile" \
             "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
