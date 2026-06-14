@@ -274,15 +274,17 @@ __nasbackup_ensure_config() {
     # validate source directories
     for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
         local job_name="${__NASBACKUP_JOBS[$i]}"
-        local source_dir="$(__nasbackup_normalize_path "${__NASBACKUP_JOBS[$i+1]}")"
-        if [[ ! -d "$source_dir" ]]; then
-            __nasbackup_log "ERROR: config: job \"$job_name\" source directory is not a directory: $source_dir"
+        local source_directory="$(__nasbackup_normalize_path "${__NASBACKUP_JOBS[$i+1]}")"
+        if [[ ! -d "$source_directory" ]]; then
+            __nasbackup_log "ERROR: config: job \"$job_name\" source directory is not a directory: $source_directory"
             return 1
         fi
+        __NASBACKUP_JOBS[$i+1]="$source_directory"
     done
 
     # validate local settings
     [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
+    __NASBACKUP_LOCAL_LOG_DIRECTORY="$(__nasbackup_normalize_path "$__NASBACKUP_LOCAL_LOG_DIRECTORY")"
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
     if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
@@ -292,7 +294,9 @@ __nasbackup_ensure_config() {
     # validate remote settings
     [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
     [[ -n "$__NASBACKUP_REMOTE_ROOT" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_ROOT must not be empty"; return 1; }
+    __NASBACKUP_REMOTE_ROOT="$(__nasbackup_normalize_path "$__NASBACKUP_REMOTE_ROOT")"
     [[ -n "$__NASBACKUP_REMOTE_LOG_DIRECTORY" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_LOG_DIRECTORY must not be empty"; return 1; }
+    __NASBACKUP_REMOTE_LOG_DIRECTORY="$(__nasbackup_normalize_path "$__NASBACKUP_REMOTE_LOG_DIRECTORY")"
     { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty"; return 1; }
 
@@ -791,10 +795,10 @@ __nasbackup_backup_directory_to_nas() {
     fi
 
     local -r job_name="$1"
-    local -r source_dir="$(__nasbackup_normalize_path "$2")"
+    local -r source_directory="$2"
     local -r run_id="$3"
 
-    local -r log_banner="Starting backup job: $job_name ($source_dir)"
+    local -r log_banner="Starting backup job: $job_name ($source_directory)"
     if (( __NASBACKUP_IS_TTY )); then
         __nasbackup_log "========================================================================"
         __nasbackup_log " $log_banner"
@@ -853,10 +857,10 @@ __nasbackup_backup_directory_to_nas() {
     #  - discard stdout progress & stats so it doesn’t pollute launchd/cron logs (stats are already written to --log-file by rsync)
     #  - route stderr through __nasbackup_log so daemon log lines get timestamps
     if (( __NASBACKUP_IS_TTY )); then
-        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_directory/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
             > /dev/stderr &
     else
-        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_dir/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
+        "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_directory/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
             > /dev/null \
             2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] $line"; done) &
     fi
