@@ -53,7 +53,7 @@ __nasbackup_log() {
 __nasbackup_get_process_start_epoch_or_empty() {
     if (( $# != 1 )); then
         __nasbackup_log "ERROR: __nasbackup_get_process_start_epoch_or_empty requires 1 argument"
-        return 0
+        return 1
     fi
 
     local -r pid="$1"
@@ -78,6 +78,7 @@ __nasbackup_format_epoch() {
         __nasbackup_log "ERROR: __nasbackup_format_epoch requires 2 arguments"
         return 1
     fi
+
     local -r epoch="$1"
     local -r fmt="$2"
     if (( __NASBACKUP_DATE_IS_GNU )); then
@@ -88,6 +89,11 @@ __nasbackup_format_epoch() {
 }
 
 __nasbackup_get_lock_pid_or_empty() {
+    if (( $# != 0 )); then
+        __nasbackup_log "ERROR: __nasbackup_get_lock_pid_or_empty requires 0 arguments"
+        return 1
+    fi
+
     local pid=""
 
     if [[ -f "$__NASBACKUP_LOCK_DIRECTORY/pid" ]]; then
@@ -103,6 +109,11 @@ __nasbackup_get_lock_pid_or_empty() {
 }
 
 __nasbackup_get_lock_started_at_or_empty() {
+    if (( $# != 0 )); then
+        __nasbackup_log "ERROR: __nasbackup_get_lock_started_at_or_empty requires 0 arguments"
+        return 1
+    fi
+
     local started_at=""
 
     if [[ -f "$__NASBACKUP_LOCK_DIRECTORY/started_at" ]]; then
