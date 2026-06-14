@@ -208,6 +208,14 @@ __nasbackup_release_lock() {
     fi
 }
 
+__nasbackup_normalize_path() {
+    local path="$1"
+    while [[ "$path" == ?*/ ]]; do
+        path="${path%/}";
+    done
+    print -r -- "$path"
+}
+
 __nasbackup_ensure_config() {
     # zsh-improved version of `$(realpath $0)` and `$(dirname $(realpath $0))`
     __NASBACKUP_SCRIPT_PATH="${${(%):-%x}:A}"
@@ -261,7 +269,7 @@ __nasbackup_ensure_config() {
     # validate source directories
     for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
         local job_name="${__NASBACKUP_JOBS[$i]}"
-        local source_dir="${__NASBACKUP_JOBS[$i+1]%/}"
+        local source_dir="$(__nasbackup_normalize_path "${__NASBACKUP_JOBS[$i+1]}")"
         if [[ ! -d "$source_dir" ]]; then
             __nasbackup_log "ERROR: config: job \"$job_name\" source directory is not a directory: $source_dir"
             return 1
@@ -772,7 +780,7 @@ __nasbackup_backup_directory_to_nas() {
     fi
 
     local -r job_name="$1"
-    local -r source_dir="${2%/}"
+    local -r source_dir="$(__nasbackup_normalize_path "$2")"
     local -r run_id="$3"
 
     local -r log_banner="Starting backup job: $job_name ($source_dir)"
