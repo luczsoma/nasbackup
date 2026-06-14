@@ -38,11 +38,11 @@ __NASBACKUP_REMOTE_RSYNC_PATH="/bin/rsync"
 #######################
 # MONITORING SETTINGS #
 #######################
-# If either one is empty, Healthchecks.io pings will not be sent
+# Both must be set to enable Healthchecks.io pings
 # Your Healthchecks.io project’s Ping Key
-__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY=""
+__NASBACKUP_HEALTHCHECKS_PING_KEY=""
 # Your Healthchecks.io check’s slug
-__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG=""
+__NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 
 #######################
 # SCHEDULING SETTINGS #

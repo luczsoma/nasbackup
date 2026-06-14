@@ -243,8 +243,8 @@ __nasbackup_ensure_config() {
     [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty"; return 1; }
 
     # validate monitoring settings
-    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
-    [[ -v __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_KEY ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_SLUG ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
 
     # validate scheduling settings
     [[ -v __NASBACKUP_SCHEDULE ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
@@ -384,8 +384,8 @@ __nasbackup_healthchecks_ping() {
         return 1
     fi
 
-    if [[ -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
-        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping requires __NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY and __NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG to be set"
+    if [[ -z "$__NASBACKUP_HEALTHCHECKS_PING_KEY" || -z "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
+        print -u2 "[nasbackup] ERROR: __nasbackup_healthchecks_ping requires __NASBACKUP_HEALTHCHECKS_PING_KEY and __NASBACKUP_HEALTHCHECKS_PING_SLUG to be set"
         return 1
     fi
 
@@ -410,7 +410,7 @@ __nasbackup_healthchecks_ping() {
         --max-time 10
         --retry 5
         --request POST
-        --url "https://hc-ping.com/$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY/$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG/$signal?rid=$rid"
+        --url "https://hc-ping.com/$__NASBACKUP_HEALTHCHECKS_PING_KEY/$__NASBACKUP_HEALTHCHECKS_PING_SLUG/$signal?rid=$rid"
         --output /dev/null
     )
     if [[ -n "$body" ]]; then
@@ -720,7 +720,7 @@ __nasbackup_backup_directory_to_nas() {
         print -u2 "========================================================================"
     fi
 
-    if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
+    if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
         __nasbackup_healthchecks_ping "log" "$run_id" "$log_banner"
     fi
 
@@ -831,15 +831,16 @@ __nasbackup_backup() {
         local -r run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
         local healthchecks_start_ping_sent=false
 
-        # Setup is decoupled from Healthchecks.io monitoring: pre-flight failures (no network, missing remote rsync, etc.)
-        # do not ping Healthchecks.io. Healthchecks.io monitors backup runs only, not config/lock/environment errors.
         __nasbackup_ensure_config || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_CONFIG_ERROR ))
         __nasbackup_acquire_lock || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCK_ACQUISITION_ERROR ))
         __nasbackup_ensure_local_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_LOCAL_ENV_SETUP_ERROR ))
         __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
         (( received_signal )) && return $received_signal
 
-        if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
+        # Pre-flight failures (config errors, lock contention, local/remote environment setup) are intentionally not
+        # reported to Healthchecks.io. Healthchecks.io reflects whether backup jobs actually ran, not whether the
+        # script was invoked. The start ping is only sent after all pre-flight checks pass.
+        if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
             healthchecks_start_ping_sent=true
         fi
@@ -856,8 +857,6 @@ __nasbackup_backup() {
 
         local -r finished_at="$(date +%s)"
 
-        # Status files record every attempt including pre-flight failures; Healthchecks.io only reflects started backup runs.
-        # The two can legitimately differ.
         if [[ -n "$__NASBACKUP_LAST_RUN_FILE" && -n "$__NASBACKUP_LAST_SUCCESS_FILE" ]]; then
             __nasbackup_write_status_file last_run "$run_id" "$finished_at" "$backup_exit_code" \
                 || print -u2 "[nasbackup] WARNING: failed to write last-run status file"
@@ -867,7 +866,9 @@ __nasbackup_backup() {
             fi
         fi
 
-        if [[ -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG" ]]; then
+        # Status files record every attempt including pre-flight failures; Healthchecks.io only reflects runs where
+        # backup jobs actually started. The two can legitimately differ.
+        if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
             if $healthchecks_start_ping_sent; then
                 __nasbackup_healthchecks_ping "$backup_exit_code" "$run_id"
             fi

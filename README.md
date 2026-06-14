@@ -86,11 +86,15 @@ At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION
 
 ## Monitoring
 
-Set `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_SECRETS_HEALTHCHECKS_PING_SLUG` in the config to enable monitoring via Healthchecks.io. The script sends:
+Schedule-based external monitoring is highly recommended so you get alerted not only about potential backup errors, but also when backups stop running altogether (for example if your computer is off during every scheduled window, if the schedule was accidentally disabled, or if a persistent environment error prevents any run from starting).
 
-- a **start** ping at the start of a backup run
-- a **log** ping at the start of each job
-- a **finish** ping (with exit code) at the end of a backup run
+External monitoring in nasbackup is supported via [Healthchecks.io](https://healthchecks.io). Configure a scheduled check there, then set both `__NASBACKUP_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_HEALTHCHECKS_PING_SLUG` in the config to send:
+
+- a **start** ping once all pre-flight checks pass and the backup jobs are about to begin,
+- a **log** ping at the start of each individual job,
+- a **finish** ping (with exit code) at the end of the run.
+
+Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. To diagnose a run, check stdout/stderr and the logs, and `nasbackup status`.
 
 ## Scheduling
 
