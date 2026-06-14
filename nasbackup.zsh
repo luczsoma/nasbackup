@@ -229,6 +229,16 @@ __nasbackup_ensure_config() {
         job_names_seen+=("$job_name")
     done
 
+    # validate source directories
+    for (( i = 1; i <= ${#__NASBACKUP_JOBS[@]}; i += 2 )); do
+        local job_name="${__NASBACKUP_JOBS[$i]}"
+        local source_dir="${__NASBACKUP_JOBS[$i+1]%/}"
+        if [[ ! -d "$source_dir" ]]; then
+            print -u2 "[nasbackup] ERROR: config: job \"$job_name\" source directory is not a directory: $source_dir"
+            return 1
+        fi
+    done
+
     # validate local settings
     [[ -n "$__NASBACKUP_LOCAL_LOG_DIRECTORY" ]] || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_DIRECTORY must not be empty"; return 1; }
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { print -u2 "[nasbackup] ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
@@ -722,11 +732,6 @@ __nasbackup_backup_directory_to_nas() {
 
     if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
         __nasbackup_healthchecks_ping "log" "$run_id" "$log_banner"
-    fi
-
-    if [[ ! -d "$source_dir" ]]; then
-        print -u2 "[nasbackup] [$job_name] ERROR: source is not a directory: $source_dir"
-        return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
     fi
 
     local -r started_at_epoch="$(__nasbackup_get_process_start_epoch_or_empty $$)"
