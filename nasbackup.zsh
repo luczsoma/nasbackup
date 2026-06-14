@@ -894,8 +894,8 @@ __nasbackup_status() {
     __nasbackup_ensure_config || return $__NASBACKUP_EXIT_CODE_CONFIG_ERROR
 
     if __nasbackup_acquire_lock 2> /dev/null; then
-        __nasbackup_release_lock
         print -u2 "[nasbackup] no backup is currently in progress"
+        __nasbackup_release_lock
     else
         print -u2 "[nasbackup] another backup is currently in progress"
 
