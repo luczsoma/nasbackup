@@ -50,7 +50,7 @@ nasbackup [backup|logs|status|enable|disable|help]
 
 ## Backup runs and jobs
 
-A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). Each job rsyncs `<source_directory>/*` into `__NASBACKUP_REMOTE_ROOT/<job_name>/` on the remote. If a job fails, the run stops and remaining jobs are not executed.
+A `backup` run executes all configured jobs sequentially in the order they are defined in the config, using rsync with `--recursive --links --perms --times --delete` (customizable, see config). Each job rsyncs the contents of `<source_directory>` into `__NASBACKUP_REMOTE_ROOT/<job_name>` on the remote. If a job fails, the run stops and remaining jobs are not executed.
 
 ## Configuration
 
@@ -92,7 +92,7 @@ nasbackup--2026-06-21T00-00-00+0200--5fbd043d-3ba9-4e6e-9190-876892051388--docum
 
 After a job completes, its log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the remote.
 
-At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` days are deleted (if set), and remote logs older than `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted (if set).
+At the start of each run, local log files are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` and remote log files according to `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS`: `0` deletes all logs; a positive value deletes logs older than that many days; empty means keep logs indefinitely (no cleanup).
 
 Note: Remote log cleanup uses `find -delete`, which is a GNU findutils extension. On BusyBox-based systems such as Synology DSM, support depends on compile-time configuration (`CONFIG_FEATURE_FIND_DELETE`). If the remote `find` does not support `-delete`, cleanup is skipped and a warning is logged; the backup itself is unaffected.
 
@@ -102,7 +102,9 @@ All diagnostic output (status messages, warnings, errors) goes to stderr. Nothin
 
 When run interactively, stderr goes to the terminal as usual.
 
-When run via launchd or cron, stderr is redirected to `launchd.stderr.log` / `cron.stderr.log` inside `__NASBACKUP_LOCAL_LOG_DIRECTORY`. Each line is prefixed with a timestamp (e.g., `2026-06-21T00-00-00+0200`). If `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` is set, lines older than that many days are dropped from the file at the start of each run.
+When run via launchd or cron, stderr is redirected to `launchd.stderr.log` or `cron.stderr.log` inside `__NASBACKUP_LOCAL_LOG_DIRECTORY`, and each line is prefixed with a timestamp (e.g., `2026-06-21T00-00-00+0200`).
+
+At the start of each run (interactive or not) `launchd.stderr.log` and `cron.stderr.log` are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` if they exist: `0` truncates them entirely; a positive value drops lines older than that many days; empty means they are never cleaned up.
 
 ## Monitoring
 
