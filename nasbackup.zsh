@@ -839,8 +839,8 @@ __nasbackup_backup_directory_to_nas() {
         "${__NASBACKUP_EXTRA_RSYNC_ARGS[@]}"
     )
 
-    # TTY: print progress & stats to stderr (so it doesn’t pollute stdout with user info)
-    # non-TTY: discard stdout progress & stats (so it doesn’t pollute launchd/cron logs)
+    # TTY: print progress & stats to stderr so it doesn’t pollute stdout with user info
+    # non-TTY: discard stdout progress & stats so it doesn’t pollute launchd/cron logs (stats are already written to --log-file by rsync)
     local stdout_target
     if (( __NASBACKUP_IS_TTY )); then
         stdout_target=/dev/stderr
