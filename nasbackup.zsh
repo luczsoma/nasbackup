@@ -436,6 +436,8 @@ __nasbackup_ensure_remote_environment() {
     local -r remote_env_setup="{ test -x ${(q)__NASBACKUP_REMOTE_RSYNC_PATH} && mkdir -p ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY}; } || exit 1"
     local mtime_predicate=""
     (( __NASBACKUP_REMOTE_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"
+    # find -delete is a GNU findutils extension; BusyBox find (Synology DSM) only supports it when
+    # compiled with CONFIG_FEATURE_FIND_DELETE=y (failure is non-fatal: SSH exit 2 → WARNING log)
     local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' ${mtime_predicate} -delete || exit 2"
 
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$__NASBACKUP_REMOTE_HOST" \

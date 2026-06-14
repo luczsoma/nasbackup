@@ -94,6 +94,8 @@ After a job completes, its log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIREC
 
 At the start of each run, local logs older than `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` days are deleted (if set), and remote logs older than `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS` days are deleted (if set).
 
+Note: Remote log cleanup uses `find -delete`, which is a GNU findutils extension. On BusyBox-based systems such as Synology DSM, support depends on compile-time configuration (`CONFIG_FEATURE_FIND_DELETE`). If the remote `find` does not support `-delete`, cleanup is skipped and a warning is logged; the backup itself is unaffected.
+
 ### Diagnostic output
 
 All diagnostic output (status messages, warnings, errors) goes to stderr. Nothing is written to stdout during a `backup` run.
