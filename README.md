@@ -112,7 +112,7 @@ External monitoring in nasbackup is supported via [Healthchecks.io](https://heal
 - a **log** ping at the start of each individual job,
 - a **finish** ping (with exit code) at the end of the run.
 
-Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. To diagnose a run, check stderr and the logs, and `nasbackup status`.
+Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. The finish ping exit code is always in the `0–8` range (`0` for success, the job bitmask for `1–7`, or `8` for a generic job-level error), or a signal code (`129/130/131/143`) if the backup was killed. To diagnose a run, check stderr and the logs, and `nasbackup status`.
 
 ## Scheduling
 
