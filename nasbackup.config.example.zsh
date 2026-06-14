@@ -48,13 +48,14 @@ __NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 # SCHEDULING SETTINGS #
 #######################
 # The schedule on which automatic backups run; required by `nasbackup enable`
-# Format: "launchd=<launchd_exp>" or "cron=<cron_exp>"
+# Format: "launchd=<launchd_expression>" or "cron=<cron_expression>"
 #
-# launchd=<launchd_exp>
-#   One or more StartCalendarInterval entries, separated by ";". Only supported on macOS.
-#   Each entry has 5 comma-separated fields: Minute,Hour,Day,Weekday,Month
+# launchd_expression
+#   One or more entries separated by ";", each encoding a StartCalendarInterval dictionary as 5 comma-separated fields.
+#   Only supported on macOS.
+#   Fields: Minute,Hour,Day,Weekday,Month
 #     Minute: 0–59 | Hour: 0–23 | Day: 1–31 | Weekday: 0–7 (0 and 7 = Sunday) | Month: 1–12
-#   A blank field is a wildcard (the key is omitted from StartCalendarInterval).
+#   A blank field is a wildcard meaning every (the key is omitted from StartCalendarInterval).
 #   Examples:
 #     - every day at 03:00 (Minute=0, Hour=3)
 #       "launchd=0,3,,,"
@@ -62,17 +63,18 @@ __NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 #       "launchd=0,2,,0,"
 #     - first day of every month at 01:00 (Minute=0, Hour=1, Day=1)
 #       "launchd=0,1,1,,"
-#     - every minute of 03:xx every day (Hour=3, Minute wildcard)
-#       "launchd=,3,,,"
+#     - every minute of 08:xx every day (Minute=wildcard, Hour=8)
+#       "launchd=,8,,,"
 #     - every day at 03:00 and 15:00 (two entries)
 #       "launchd=0,3,,,;0,15,,,"
-#     - 4 times an hour at :00, :15, :30, :45 (four entries)
+#     - every 15 minutes (four entries)
 #       "launchd=0,,,,;15,,,,;30,,,,;45,,,,"
-#     - 12 times a day every 2 hours at :00 of each even hour (twelve entries)
-#       "launchd=0,0,,,;0,2,,,;0,4,,,;0,6,,,;0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,;0,20,,,;0,22,,,"
+#     - every 2 hours between 08:00 and 18:00 (six entries)
+#       "launchd=0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,"
 #
-# cron=<cron_exp>
-#   A standard cron expression written verbatim into crontab. Only supported on non-macOS.
+# cron_expression
+#   A standard cron expression written verbatim to the user crontab without validation by nasbackup.
+#   Only supported on non-macOS.
 #   Examples:
 #     - every day at 03:00
 #       "cron=0 3 * * *"
@@ -80,6 +82,14 @@ __NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 #       "cron=0 2 * * 0"
 #     - first day of every month at 01:00
 #       "cron=0 1 1 * *"
+#     - every minute of 08:xx every day
+#       "cron=* 8 * * *"
+#     - every day at 03:00 and 15:00
+#       "cron=0 3,15 * * *"
+#     - every 15 minutes
+#       "cron=*/15 * * * *"
+#     - every 2 hours between 08:00 and 18:00
+#       "cron=0 8-18/2 * * *"
 #
 # Note: run `nasbackup disable` to disable an already-installed schedule; clearing this value alone does not disable scheduling
 __NASBACKUP_SCHEDULE=""

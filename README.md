@@ -98,16 +98,18 @@ Only job outcomes are reported to Healthchecks.io; pre-flight failures (config e
 
 ## Scheduling
 
-Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to install and activate automatic backups. On macOS a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`), on other platforms a user crontab entry is added. Run `nasbackup disable` to disable scheduling and remove the installed schedule entirely. The `enable` subcommand is idempotent: re-running it replaces any previously installed schedule with the current one in the config.
+Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to activate automatic backups. On macOS, a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`), on other platforms a user crontab entry is added. The `enable` subcommand is idempotent: re-running it replaces any previously installed schedule with the current one in the config. Run `nasbackup disable` to disable scheduling (it removes the installed schedule entirely).
 
-The format is `launchd=<expression>` or `cron=<expression>`, and must match the platform:
+The format of `__NASBACKUP_SCHEDULE` is `launchd=<launchd_expression>` or `cron=<cron_expression>`, and must match the platform:
 
-- **macOS:** use `launchd=<expression>` (`cron=` is a config error on macOS)
-- **Other platforms:** use `cron=<expression>` (`launchd=` is a config error on non-macOS)
+- **macOS:** use `launchd=...` (`cron=...` is a config error on macOS)
+- **other platforms:** use `cron=...` (`launchd=...` is a config error on non-macOS)
 
-### `launchd=<expression>`
+### Scheduling expressions
 
-One or more `StartCalendarInterval` entries separated by `;`. Each entry is 5 comma-separated fields:
+#### `launchd_expression`
+
+One or more entries separated by `;`, each encoding a launchd `StartCalendarInterval` dictionary as 5 comma-separated fields:
 
 ```
 Minute,Hour,Day,Weekday,Month
@@ -121,7 +123,7 @@ Minute,Hour,Day,Weekday,Month
 | `Weekday` | 0–7   | 0 and 7 = Sunday |
 | `Month`   | 1–12  |                  |
 
-A blank field is a wildcard (the key is omitted from `StartCalendarInterval`). Multiple entries allow schedules that cron would express with a list, interval, or step (e.g. running at :00, :15, :30, :45 each hour).
+A blank field is a wildcard meaning _every_ (the key is omitted from the `StartCalendarInterval` dictionary). Multiple entries allow schedules that cron would express with a list, interval, or step (e.g. running at :00, :15, :30, :45 every hour).
 
 ```zsh
 # every day at 03:00 (Minute=0, Hour=3)
@@ -130,19 +132,19 @@ __NASBACKUP_SCHEDULE="launchd=0,3,,,"
 __NASBACKUP_SCHEDULE="launchd=0,2,,0,"
 # first day of every month at 01:00 (Minute=0, Hour=1, Day=1)
 __NASBACKUP_SCHEDULE="launchd=0,1,1,,"
-# every minute of 03:xx every day (Hour=3, Minute wildcard)
-__NASBACKUP_SCHEDULE="launchd=,3,,,"
+# every minute of 08:xx every day (Minute=wildcard, Hour=8)
+__NASBACKUP_SCHEDULE="launchd=,8,,,"
 # every day at 03:00 and 15:00 (two entries)
 __NASBACKUP_SCHEDULE="launchd=0,3,,,;0,15,,,"
-# 4 times an hour at :00, :15, :30, :45 (four entries)
+# every 15 minutes (four entries)
 __NASBACKUP_SCHEDULE="launchd=0,,,,;15,,,,;30,,,,;45,,,,"
-# 12 times a day every 2 hours at :00 of each even hour (twelve entries)
-__NASBACKUP_SCHEDULE="launchd=0,0,,,;0,2,,,;0,4,,,;0,6,,,;0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,;0,20,,,;0,22,,,"
+# every 2 hours between 08:00 and 18:00 (six entries)
+__NASBACKUP_SCHEDULE="launchd=0,8,,,;0,10,,,;0,12,,,;0,14,,,;0,16,,,;0,18,,,"
 ```
 
-### `cron=<expression>`
+#### `cron_expression`
 
-A standard cron expression written verbatim to the user crontab. The supported syntax depends on the platform’s cron implementation.
+A standard cron expression written verbatim to the user crontab without validation by nasbackup. Supported syntax depends on the platform’s cron implementation.
 
 ```zsh
 # every day at 03:00
@@ -151,6 +153,14 @@ __NASBACKUP_SCHEDULE="cron=0 3 * * *"
 __NASBACKUP_SCHEDULE="cron=0 2 * * 0"
 # first day of every month at 01:00
 __NASBACKUP_SCHEDULE="cron=0 1 1 * *"
+# every minute of 08:xx every day
+__NASBACKUP_SCHEDULE="cron=* 8 * * *"
+# every day at 03:00 and 15:00
+__NASBACKUP_SCHEDULE="cron=0 3,15 * * *"
+# every 15 minutes
+__NASBACKUP_SCHEDULE="cron=*/15 * * * *"
+# every 2 hours between 08:00 and 18:00
+__NASBACKUP_SCHEDULE="cron=0 8-18/2 * * *"
 ```
 
 ### Scheduled-context caveats
