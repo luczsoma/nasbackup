@@ -360,11 +360,15 @@ __nasbackup_ensure_config() {
     __NASBACKUP_RSYNC_FILTER_DIRECTORY="$__NASBACKUP_SCRIPT_DIRECTORY/rsync-filters"
 }
 
-__nasbackup_ensure_local_environment() {
+__nasbackup_ensure_local_log_directory() {
     mkdir -p "$__NASBACKUP_LOCAL_LOG_DIRECTORY" || {
         __nasbackup_log "ERROR: failed to create local log directory"
         return 1
     }
+}
+
+__nasbackup_ensure_local_environment() {
+    __nasbackup_ensure_local_log_directory || return 1
 
     command -v "$__NASBACKUP_LOCAL_RSYNC_PATH" > /dev/null 2>&1 || {
         __nasbackup_log "ERROR: local rsync not found or not executable: $__NASBACKUP_LOCAL_RSYNC_PATH"
@@ -483,7 +487,7 @@ __nasbackup_xml_escape() {
 }
 
 __nasbackup_launchd_enable() {
-    __nasbackup_ensure_local_environment || return 1
+    __nasbackup_ensure_local_log_directory || return 1
 
     mkdir -p "$HOME/Library/LaunchAgents" 2> /dev/null || {
         __nasbackup_log "ERROR: could not create ~/Library/LaunchAgents"
@@ -660,7 +664,7 @@ __nasbackup_write_status_file() {
             ;;
     esac
 
-    __nasbackup_ensure_local_environment || return 1
+    __nasbackup_ensure_local_log_directory || return 1
 
     local -r started_at="$(__nasbackup_get_process_start_epoch_or_empty $$)"
     if [[ -z "$started_at" ]]; then
