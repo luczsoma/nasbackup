@@ -36,15 +36,6 @@ __NASBACKUP_REMOTE_LOG_RETENTION_DAYS=365
 __NASBACKUP_REMOTE_RSYNC_PATH="/bin/rsync"
 
 #######################
-# MONITORING SETTINGS #
-#######################
-# Both must be set to enable Healthchecks.io pings
-# Your Healthchecks.io project’s Ping Key
-__NASBACKUP_HEALTHCHECKS_PING_KEY=""
-# Your Healthchecks.io check’s slug
-__NASBACKUP_HEALTHCHECKS_PING_SLUG=""
-
-#######################
 # SCHEDULING SETTINGS #
 #######################
 # The schedule on which automatic backups run; required by `nasbackup enable`
@@ -93,6 +84,15 @@ __NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 #
 # Note: run `nasbackup disable` to disable an already-installed schedule; clearing this value alone does not disable scheduling
 __NASBACKUP_SCHEDULE=""
+
+#######################
+# MONITORING SETTINGS #
+#######################
+# Both must be set to enable Healthchecks.io monitoring
+# Your Healthchecks.io project’s Ping Key
+__NASBACKUP_HEALTHCHECKS_PING_KEY=""
+# Your Healthchecks.io check’s slug
+__NASBACKUP_HEALTHCHECKS_PING_SLUG=""
 
 #####################
 # ADVANCED SETTINGS #
