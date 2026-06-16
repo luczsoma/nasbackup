@@ -19,17 +19,17 @@ typeset -ri \
     __NASBACKUP_EXIT_CODE_SIGNAL_QUIT=131 \
     __NASBACKUP_EXIT_CODE_SIGNAL_TERM=143
 
-# /tmp is world-writable and the name is fixed, so a leftover or adversarial
-# directory at this path blocks all backups (exit 10) until manually removed.
-# Using $TMPDIR with a user-specific suffix would scope the path per-user and
-# respect macOS per-session temp dirs, but complicates stale-lock detection
-# across sessions. Accepted: single-user script, manual cleanup is sufficient.
+# /tmp is world-writable and the name is fixed, so a leftover or adversarial directory at this path blocks all backups (exit 10) until manually removed.
+# Using $TMPDIR with a user-specific suffix would scope the path per-user and respect macOS per-session temp dirs, but complicates stale-lock detection across sessions.
+# Accepted: single-user script, manual cleanup is sufficient.
 typeset -r __NASBACKUP_LOCK_DIRECTORY="/tmp/nasbackup.lock"
 
-typeset -r __NASBACKUP_TIMESTAMP_FORMAT="+%Y-%m-%dT%H-%M-%S%z"
 # shared SSH options for all remote operations (env-check ssh and rsync --rsh)
 # ConnectTimeout + BatchMode to fail fast & non-interactively, ServerAlive* to detect a stalled connection
 typeset -r __NASBACKUP_SSH_OPTIONS="-o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+
+typeset -r __NASBACKUP_TIMESTAMP_FORMAT="+%Y-%m-%dT%H-%M-%S%z"
+
 typeset -r __NASBACKUP_LAUNCHD_LABEL="io.github.luczsoma.nasbackup"
 typeset -r __NASBACKUP_LAUNCHD_PLIST_PATH="$HOME/Library/LaunchAgents/$__NASBACKUP_LAUNCHD_LABEL.plist"
 typeset -r __NASBACKUP_CRON_MARKER="# nasbackup-managed"
@@ -42,7 +42,11 @@ else
 fi
 
 # Detect TTY at load time: test stderr (fd 2), since all output goes there
-[[ -t 2 ]] && typeset -ri __NASBACKUP_IS_TTY=1 || typeset -ri __NASBACKUP_IS_TTY=0
+if [[ -t 2 ]]; then
+    typeset -ri __NASBACKUP_IS_TTY=1
+else
+    typeset -ri __NASBACKUP_IS_TTY=0
+fi
 
 __nasbackup_log() {
     if (( $# != 1 )); then
@@ -54,7 +58,7 @@ __nasbackup_log() {
     if (( !__NASBACKUP_IS_TTY )); then
         message="$(date "$__NASBACKUP_TIMESTAMP_FORMAT") $message"
     fi
-    
+
     print -r -u2 -- "$message"
 }
 
@@ -436,7 +440,7 @@ __nasbackup_ensure_local_environment() {
         for log_file in "${daemon_logs[@]}"; do
             if [[ -f "$log_file" ]]; then
                 if (( __NASBACKUP_LOCAL_LOG_RETENTION_DAYS == 0 )); then
-                    :> "$log_file" 2> /dev/null
+                    : > "$log_file" 2> /dev/null
                 else
                     if awk -v cutoff="$cutoff_str" 'substr($0, 1, 24) >= cutoff' "$log_file" > "$log_file.tmp"; then
                         cp "$log_file.tmp" "$log_file"
@@ -452,8 +456,7 @@ __nasbackup_ensure_remote_environment() {
     local -r remote_env_setup="{ test -x ${(q)__NASBACKUP_REMOTE_RSYNC_PATH} && mkdir -p ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY}; } || exit 1"
     local mtime_predicate=""
     (( __NASBACKUP_REMOTE_LOG_RETENTION_DAYS > 0 )) && mtime_predicate="-mtime +$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS"
-    # find -delete is a GNU findutils extension; BusyBox find (Synology DSM) only supports it when
-    # compiled with CONFIG_FEATURE_FIND_DELETE=y (failure is non-fatal: SSH exit 2 → WARNING log)
+    # find -delete is a GNU findutils extension; BusyBox find (Synology DSM) only supports it when compiled with CONFIG_FEATURE_FIND_DELETE=y (failure is non-fatal: SSH exit 2 → WARNING log)
     local -r remote_log_cleanup="find ${(q)__NASBACKUP_REMOTE_LOG_DIRECTORY} -type f -name 'nasbackup-*.log' ${mtime_predicate} -delete || exit 2"
 
     ssh ${=__NASBACKUP_SSH_OPTIONS} "$__NASBACKUP_REMOTE_HOST" \
@@ -918,8 +921,8 @@ __nasbackup_backup() {
 
     {
         local received_signal=0
-        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_HUP"  HUP
-        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_INT"  INT
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_HUP" HUP
+        trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_INT" INT
         trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_QUIT" QUIT
         trap "received_signal=$__NASBACKUP_EXIT_CODE_SIGNAL_TERM" TERM
 
@@ -932,9 +935,8 @@ __nasbackup_backup() {
         __nasbackup_ensure_remote_environment || return $(( received_signal ? received_signal : __NASBACKUP_EXIT_CODE_REMOTE_ENV_SETUP_ERROR ))
         (( received_signal )) && return $received_signal
 
-        # Pre-flight failures (config errors, lock contention, local/remote environment setup) are intentionally not
-        # reported to Healthchecks.io. Healthchecks.io reflects whether backup jobs actually ran, not whether the
-        # script was invoked. The start ping is only sent after all pre-flight checks pass.
+        # Pre-flight failures (config errors, lock contention, local/remote environment setup) are intentionally not reported to Healthchecks.io.
+        # Healthchecks.io reflects whether backup jobs actually ran, not whether the script was invoked. The start ping is only sent after all pre-flight checks pass.
         if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
             __nasbackup_healthchecks_ping "start" "$run_id"
             healthchecks_start_ping_sent=true

@@ -2,7 +2,7 @@
 
 A zsh-based tool that backs up local directories to a remote location via rsync over SSH, with optional launchd or cron scheduling.
 
-**The nasbackup tool maintains a live mirror, not a versioned backup.** Each run brings the remote into sync with the current state of the source. Files deleted or overwritten on the source are deleted or overwritten on the remote on the next run; no previous versions are kept. If you need point-in-time snapshots or file history, consider layering your remote’s snapshot feature (e.g. Synology Btrfs snapshots) on top, or use a tool like [restic](https://restic.net) or [BorgBackup](https://www.borgbackup.org) instead.
+**The nasbackup tool maintains a live mirror, not a versioned backup.** Each run brings the remote into sync with the current state of the source. Files deleted or overwritten on the source are deleted or overwritten on the remote on the next run; no previous versions are kept. If you need point-in-time snapshots or file history, consider layering your remote’s snapshot feature (e.g., Synology Btrfs snapshots) on top, or use a tool like [restic](https://restic.net) or [BorgBackup](https://www.borgbackup.org) instead.
 
 ## Prerequisites
 
@@ -39,14 +39,14 @@ nasbackup backup
 nasbackup [backup|logs|status|enable|disable|help]
 ```
 
-| Subcommand         | Description                                                                      |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `backup` (default) | Run all configured jobs sequentially in the order they are defined in the config |
-| `logs`             | Print the path of the local log directory (e.g. for `cd $(nasbackup logs)`)      |
-| `status`           | Show whether a backup is running, last run, last success, and scheduling status  |
-| `enable`           | Install and activate the schedule (launchd on macOS, cron on other platforms)    |
-| `disable`          | Remove the installed schedule entirely                                           |
-| `help`             | Print usage                                                                      |
+| Subcommand         | Description                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `backup` (default) | Run all configured jobs sequentially in the order they are defined in the config           |
+| `logs`             | Print the path of the local log directory (e.g., for `cd $(nasbackup logs)`)               |
+| `status`           | Show whether a backup is running, last run, last success, and scheduling status            |
+| `enable`           | Install and activate scheduling (launchd agent on macOS, crontab entry on other platforms) |
+| `disable`          | Deactivate and remove the installed schedule entirely                                      |
+| `help`             | Print usage                                                                                |
 
 ## Backup runs and jobs
 
@@ -92,35 +92,23 @@ nasbackup--2026-06-21T00-00-00+0200--5fbd043d-3ba9-4e6e-9190-876892051388--docum
 
 After a job completes, its log file is uploaded to `__NASBACKUP_REMOTE_LOG_DIRECTORY` on the remote.
 
-At the start of each run, local log files are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` and remote log files according to `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS`: `0` deletes all logs; a positive value deletes logs older than that many days; empty means keep logs indefinitely (no cleanup).
+At the start of each run, local log files are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` and remote log files according to `__NASBACKUP_REMOTE_LOG_RETENTION_DAYS`: `0` deletes all logs, a positive value deletes logs older than that many days, and empty means keep logs indefinitely (no cleanup).
 
-Note: Remote log cleanup uses `find -delete`, which is a GNU findutils extension. On BusyBox-based systems such as Synology DSM, support depends on compile-time configuration (`CONFIG_FEATURE_FIND_DELETE`). If the remote `find` does not support `-delete`, cleanup is skipped and a warning is logged; the backup itself is unaffected.
+Note: Remote log cleanup uses `find -delete`, which is a GNU findutils extension. On BusyBox-based systems such as Synology DSM, support depends on compile-time configuration (`CONFIG_FEATURE_FIND_DELETE`). If the remote `find` does not support `-delete`, cleanup is skipped and a warning is logged, but the backup itself is unaffected.
 
 ### Diagnostic output
 
-All diagnostic output (status messages, warnings, errors) goes to stderr. Nothing is written to stdout during a `backup` run.
+All diagnostic output (status messages, warnings, errors) goes to stderr. Nothing is written to stdout during a `backup` run. The only subcommand that writes to stdout is `logs`, which prints the local log directory path so you can run `cd $(nasbackup logs)`.
 
 When run interactively, stderr goes to the terminal as usual.
 
 When run via launchd or cron, stderr is redirected to `launchd.stderr.log` or `cron.stderr.log` inside `__NASBACKUP_LOCAL_LOG_DIRECTORY`, and each line is prefixed with a timestamp (e.g., `2026-06-21T00-00-00+0200`).
 
-At the start of each run (interactive or not) `launchd.stderr.log` and `cron.stderr.log` are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` if they exist: `0` truncates them entirely; a positive value drops lines older than that many days; empty means they are never cleaned up.
-
-## Monitoring
-
-Schedule-based external monitoring is highly recommended so you get alerted not only about potential backup errors, but also when backups stop running altogether (for example if your computer is off during every scheduled window, if the schedule was accidentally disabled, or if a persistent environment error prevents any run from starting).
-
-External monitoring in nasbackup is supported via [Healthchecks.io](https://healthchecks.io). Configure a scheduled check there, then set both `__NASBACKUP_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_HEALTHCHECKS_PING_SLUG` in the config to send:
-
-- a **start** ping once all pre-flight checks pass and the backup jobs are about to begin,
-- a **log** ping at the start of each individual job,
-- a **finish** ping (with exit code) at the end of the run.
-
-Only job outcomes are reported to Healthchecks.io; pre-flight failures (config errors, lock contention, environment setup) are not. The finish ping exit code is always in the `0–8` range (`0` for success, the job bitmask for `1–7`, or `8` for a generic job-level error), or a signal code (`129/130/131/143`) if the backup was killed. To diagnose a run, check stderr and the logs, and `nasbackup status`.
+At the start of each run (interactive or not) `launchd.stderr.log` and `cron.stderr.log` are cleaned up according to `__NASBACKUP_LOCAL_LOG_RETENTION_DAYS` if they exist: `0` truncates them entirely, a positive value drops lines older than that many days, and empty means they are never cleaned up.
 
 ## Scheduling
 
-Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to activate automatic backups. On macOS, a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`), on other platforms a user crontab entry is added. The `enable` subcommand is idempotent: re-running it replaces any previously installed schedule with the current one in the config. Run `nasbackup disable` to disable scheduling (it removes the installed schedule entirely).
+Set `__NASBACKUP_SCHEDULE` in the config, then run `nasbackup enable` to activate automatic backups. On macOS, a per-user launchd agent is installed (`~/Library/LaunchAgents/io.github.luczsoma.nasbackup.plist`), on other platforms a user crontab entry is added. The `enable` subcommand is idempotent: re-running it replaces any previously installed schedule with the current one in the config. Run `nasbackup disable` to deactivate scheduling (it removes the installed schedule entirely).
 
 The format of `__NASBACKUP_SCHEDULE` is `launchd=<launchd_expression>` or `cron=<cron_expression>`, and must match the platform:
 
@@ -145,7 +133,7 @@ Minute,Hour,Day,Weekday,Month
 | `Weekday` | 0–7   | 0 and 7 = Sunday |
 | `Month`   | 1–12  |                  |
 
-A blank field is a wildcard meaning _every_ (the key is omitted from the `StartCalendarInterval` dictionary). Multiple entries allow schedules that cron would express with a list, interval, or step (e.g. running at :00, :15, :30, :45 every hour).
+A blank field is a wildcard meaning _every_ (the key is omitted from the `StartCalendarInterval` dictionary). Multiple entries allow schedules that cron would express with a list, interval, or step (e.g., running at :00, :15, :30, :45 every hour).
 
 ```zsh
 # every day at 03:00 (Minute=0, Hour=3)
@@ -197,3 +185,15 @@ To inspect the launchd agent state or see its last exit code:
 ```zsh
 launchctl print gui/$(id -u)/io.github.luczsoma.nasbackup
 ```
+
+## Monitoring
+
+Schedule-based external monitoring is highly recommended so you get alerted not only about potential backup errors, but also when backups stop running altogether (e.g., if your computer is off during every scheduled window, if the schedule was accidentally disabled, or if a persistent environment error prevents any run from starting).
+
+External monitoring in nasbackup is supported via [Healthchecks.io](https://healthchecks.io). Configure a scheduled check there, then set both `__NASBACKUP_HEALTHCHECKS_PING_KEY` and `__NASBACKUP_HEALTHCHECKS_PING_SLUG` in the config to send:
+
+- a **start** ping once all pre-flight checks pass and the backup jobs are about to begin,
+- a **log** ping at the start of each individual job,
+- a **finish** ping (with exit code) at the end of the run.
+
+Only job outcomes are reported to Healthchecks.io, pre-flight failures (config errors, lock contention, environment setup) are not. The finish ping exit code is always in the `0–8` range (`0` for success, `1–7` for the job failure bitmask, or `8` for a generic job-level error), or a signal code (`129/130/131/143`) if the backup was killed. To diagnose a run, check stderr and the logs, and `nasbackup status`.
