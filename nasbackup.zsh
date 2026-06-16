@@ -865,7 +865,7 @@ __nasbackup_backup_directory_to_nas() {
     else
         "$__NASBACKUP_LOCAL_RSYNC_PATH" "${rsync_args[@]}" "$source_directory/" "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_ROOT/$job_name" \
             > /dev/null \
-            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] $line"; done) &
+            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] [rsync] $line"; done) &
     fi
     local -r rsync_pid=$!
     wait $rsync_pid
@@ -891,7 +891,7 @@ __nasbackup_backup_directory_to_nas() {
             "$local_rsynclogfile" \
             "$__NASBACKUP_REMOTE_HOST:$__NASBACKUP_REMOTE_LOG_DIRECTORY" \
             > /dev/null \
-            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] $line"; done)
+            2> >(while IFS= read -r line; do __nasbackup_log "[$job_name] [log upload] $line"; done)
     fi
     local -r log_upload_exit_code="$?"
 
