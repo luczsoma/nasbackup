@@ -294,9 +294,6 @@ __nasbackup_ensure_config() {
     __NASBACKUP_LOCAL_LOG_DIRECTORY="$(__nasbackup_normalize_path "$__NASBACKUP_LOCAL_LOG_DIRECTORY")"
     { [[ -v __NASBACKUP_LOCAL_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" || "$__NASBACKUP_LOCAL_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_LOCAL_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_RSYNC_PATH must not be empty"; return 1; }
-    if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
-        [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty when Healthchecks.io monitoring is enabled"; return 1; }
-    fi
 
     # validate remote settings
     [[ -n "$__NASBACKUP_REMOTE_HOST" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_HOST must not be empty"; return 1; }
@@ -306,10 +303,6 @@ __nasbackup_ensure_config() {
     __NASBACKUP_REMOTE_LOG_DIRECTORY="$(__nasbackup_normalize_path "$__NASBACKUP_REMOTE_LOG_DIRECTORY")"
     { [[ -v __NASBACKUP_REMOTE_LOG_RETENTION_DAYS ]] && [[ -z "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" || "$__NASBACKUP_REMOTE_LOG_RETENTION_DAYS" == <0-> ]]; } || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_LOG_RETENTION_DAYS must be defined as a non-negative integer or empty (empty means no restriction)"; return 1; }
     [[ -n "$__NASBACKUP_REMOTE_RSYNC_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_REMOTE_RSYNC_PATH must not be empty"; return 1; }
-
-    # validate monitoring settings
-    [[ -v __NASBACKUP_HEALTHCHECKS_PING_KEY ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
-    [[ -v __NASBACKUP_HEALTHCHECKS_PING_SLUG ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
 
     # validate scheduling settings
     [[ -v __NASBACKUP_SCHEDULE ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_SCHEDULE must be defined (set to empty string if you won’t run \`nasbackup enable\`)"; return 1; }
@@ -379,6 +372,10 @@ __nasbackup_ensure_config() {
         esac
     fi
 
+    # validate monitoring settings
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_KEY ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_KEY must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+    [[ -v __NASBACKUP_HEALTHCHECKS_PING_SLUG ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_HEALTHCHECKS_PING_SLUG must be defined (set to empty string to disable Healthchecks.io pings)"; return 1; }
+
     # validate advanced settings
     [[ -v __NASBACKUP_EXTRA_RSYNC_ARGS ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_EXTRA_RSYNC_ARGS must be defined (set to an empty array to add no extra args)"; return 1; }
 
@@ -390,6 +387,13 @@ __nasbackup_ensure_config() {
             return 1
         fi
     done
+
+    # cross-validate: __NASBACKUP_LOCAL_CURL_PATH must always be defined and must be non-empty when monitoring is active
+    if [[ -n "$__NASBACKUP_HEALTHCHECKS_PING_KEY" && -n "$__NASBACKUP_HEALTHCHECKS_PING_SLUG" ]]; then
+        [[ -n "$__NASBACKUP_LOCAL_CURL_PATH" ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must not be empty when Healthchecks.io monitoring is enabled"; return 1; }
+    else
+        [[ -v __NASBACKUP_LOCAL_CURL_PATH ]] || { __nasbackup_log "ERROR: config: __NASBACKUP_LOCAL_CURL_PATH must be defined (but may be empty when Healthchecks.io monitoring is disabled)"; return 1; }
+    fi
 
     # create variables based on config values
     __NASBACKUP_LAST_RUN_FILE="$__NASBACKUP_LOCAL_LOG_DIRECTORY/last-run"
